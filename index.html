@@ -1,114 +1,173 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Embedded Systems & RTOS — University Exam Study Guide</title>
-  
-  <!-- Main Stylesheet -->
-  <link rel="stylesheet" href="assets/css/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20width=%22100%22%20height=%22100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <title>Embedded Systems & RTOS — Technical Study Guide</title>
 
-  <!-- KaTeX for high-quality mathematical typography (with graceful offline fallback) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+  <!-- Clean, valid SVG favicon -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ctext%20y='.9em'%20font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
+
+  <!-- Local Offline KaTeX (No external requests) -->
+  <link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
+  <script defer src="assets/vendor/katex/katex.min.js"></script>
+  <script defer src="assets/vendor/katex/auto-render.min.js"></script>
+
+  <!-- Local Fonts & Stylesheet -->
+  <link rel="stylesheet" href="assets/fonts/fonts.css">
+  <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-  <!-- Overlay for Mobile Sidebar -->
-  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+  <!-- Accessible Skip-to-Content Link -->
+  <a href="#content-container" class="skip-link">Skip to main content</a>
+
+  <!-- Mobile Sidebar Backdrop Overlay -->
+  <div class="sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
 
   <div class="app-container">
     <!-- Left Sidebar -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="Curriculum Navigation">
       <div class="sidebar-header">
-        <span class="subject-badge">University Exam Prep</span>
+        <span class="subject-badge">University Exam Preparation</span>
         <h1 class="sidebar-title">Embedded Systems &amp; RTOS</h1>
-        <p class="sidebar-subtitle">Complete 8-Mark Study Guide &bull; Modules 1–6</p>
+        <p class="sidebar-subtitle">Comprehensive 8-mark study guide &bull; Modules 1–6</p>
       </div>
 
-      <!-- Overall Syllabus Progress Widget -->
+      <!-- Syllabus Progress Widget -->
       <div class="sidebar-progress-card" id="sidebar-progress-card">
         <div class="sidebar-progress-title">
-          <span>Syllabus Progress</span>
-          <span id="syllabus-progress-pct" style="color: var(--pastel-mint-dark);">0%</span>
+          <span>Syllabus progress</span>
+          <span id="syllabus-progress-pct">0%</span>
         </div>
         <div class="sidebar-progress-stats">
-          <span><strong id="syllabus-completed-count">0</strong>/62 Completed</span>
+          <span><strong id="syllabus-completed-count">0</strong>/<span id="syllabus-total-stat">62</span> completed</span>
           <span>&bull;</span>
-          <span style="color: #D97706;"><strong id="syllabus-starred-count">0</strong> Starred</span>
+          <span style="color: var(--status-star);"><strong id="syllabus-starred-count">0</strong> starred</span>
         </div>
-        <div class="progress-track">
+        <div class="progress-track" role="progressbar" id="syllabus-progress-track" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Syllabus progress">
           <div class="progress-bar-fill" id="syllabus-progress-bar" style="width: 0%;"></div>
         </div>
       </div>
 
-      <!-- Navigation for all six modules -->
-      <nav class="sidebar-nav" id="sidebar-nav">
-        <!-- Rendered dynamically by app.js -->
+      <!-- Module Navigation List -->
+      <nav class="sidebar-nav" id="sidebar-nav" aria-label="Modules list">
+        <!-- Injected dynamically by app.js -->
       </nav>
 
       <!-- Sidebar Footer Stats -->
       <div class="sidebar-footer">
         <div>
-          <strong id="total-questions-count">62 Questions</strong>
-          <div style="font-size: 10.5px; color: var(--text-muted);">All 6 Modules Covered</div>
+          <strong id="total-questions-count">Loading...</strong>
+          <div style="font-size: 10.5px; color: var(--text-muted);">Syllabus questions</div>
         </div>
         <div style="text-align: right;">
-          <strong id="high-freq-count" style="color: var(--pastel-rose-dark);">32 High-Yield</strong>
-          <div style="font-size: 10.5px; color: var(--text-muted);">&ge; 3x Past Papers</div>
+          <strong id="high-freq-count" style="color: var(--status-pyq);">Loading...</strong>
+          <div style="font-size: 10.5px; color: var(--text-muted);">&ge; 3x past papers</div>
         </div>
       </div>
     </aside>
 
     <!-- Main Content Area -->
-    <main class="main-wrapper">
+    <main class="main-wrapper" id="main-content">
       <!-- Top Sticky Header -->
       <header class="top-header">
-        <button class="mobile-menu-btn" id="mobile-menu-btn" title="Toggle Navigation">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open navigation menu" aria-controls="sidebar" aria-expanded="false">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="3" y1="12" x2="21" y2="12"></line>
             <line x1="3" y1="6" x2="21" y2="6"></line>
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg>
         </button>
 
-        <!-- Search Bar -->
-        <div class="search-box-container">
-          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <!-- Search Bar with Keyboard Shortcut Hint -->
+        <div class="search-box-container" role="search">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <input type="text" class="search-input" id="search-input" placeholder="Search across questions, topics, Musa IDs, formulas..." autocomplete="off">
-          <span class="search-results-count" id="search-count"></span>
+          <input type="text" class="search-input" id="search-input" placeholder="Search questions, topics, Musa IDs, formulas..." autocomplete="off" aria-label="Search study guide" aria-autocomplete="list" aria-controls="search-dropdown">
+          <kbd class="search-kbd-hint" title="Press / or Ctrl+K to search">/</kbd>
           
           <!-- Live Search Dropdown -->
-          <div class="search-dropdown" id="search-dropdown"></div>
+          <div class="search-dropdown" id="search-dropdown" role="listbox" aria-label="Search results"></div>
         </div>
 
-        <!-- Header Actions -->
+        <!-- Header Actions: Theme Toggle, Backup, Expand/Collapse -->
         <div class="header-actions">
-          <button class="btn-pill" id="btn-expand-all" title="Expand All Questions">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"></polyline><polyline points="7 6 12 11 17 6"></polyline></svg>
-            Expand All
+          <!-- Theme Toggle -->
+          <button type="button" class="btn-header btn-theme-toggle" id="btn-theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+            <svg id="theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;" aria-hidden="true">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <svg id="theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
           </button>
-          <button class="btn-pill" id="btn-collapse-all" title="Collapse All Questions">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 11 12 6 7 11"></polyline><polyline points="17 18 12 13 7 18"></polyline></svg>
-            Collapse All
+
+          <!-- Export/Import Data -->
+          <button type="button" class="btn-header" id="btn-export-import" aria-label="Backup or restore study progress" title="Backup or restore study progress">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span class="btn-label">Backup</span>
+          </button>
+
+          <!-- Expand All -->
+          <button type="button" class="btn-header" id="btn-expand-all" aria-label="Expand all questions in module" title="Expand all">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="7 13 12 18 17 13"></polyline><polyline points="7 6 12 11 17 6"></polyline></svg>
+            <span class="btn-label">Expand</span>
+          </button>
+
+          <!-- Collapse All -->
+          <button type="button" class="btn-header" id="btn-collapse-all" aria-label="Collapse all questions in module" title="Collapse all">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="17 11 12 6 7 11"></polyline><polyline points="17 18 12 13 7 18"></polyline></svg>
+            <span class="btn-label">Collapse</span>
           </button>
         </div>
       </header>
 
-      <!-- Quick Filter Bar -->
-      <div class="filter-bar">
+      <!-- Compact Quick Filter Row -->
+      <div class="filter-bar" role="toolbar" aria-label="Question filters">
         <span class="filter-label">Filter:</span>
-        <button class="filter-chip active" data-filter="all">All Questions (62)</button>
-        <button class="filter-chip chip-starred" data-filter="starred">⭐ Starred (<span id="filter-starred-count">0</span>)</button>
-        <button class="filter-chip chip-completed" data-filter="completed">✅ Completed (<span id="filter-completed-count">0</span>)</button>
-        <button class="filter-chip" data-filter="uncompleted">⏳ Uncompleted</button>
-        <button class="filter-chip" data-filter="high-pyq">High Frequency (&ge; x3)</button>
-        <button class="filter-chip" data-filter="musa">Musa PYQ List</button>
-        <button class="filter-chip" data-filter="syllabus">Syllabus Only</button>
+        <button type="button" class="filter-chip active" data-filter="all" aria-pressed="true">
+          <span>All questions</span>
+          <span class="nav-badge" id="chip-count-all">0</span>
+        </button>
+        <button type="button" class="filter-chip" data-filter="starred" aria-pressed="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--status-star)" stroke="var(--status-star)" stroke-width="2" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          <span>Starred</span>
+          <span class="nav-badge" id="filter-starred-count">0</span>
+        </button>
+        <button type="button" class="filter-chip" data-filter="completed" aria-pressed="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--status-done)" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>Completed</span>
+          <span class="nav-badge" id="filter-completed-count">0</span>
+        </button>
+        <button type="button" class="filter-chip" data-filter="uncompleted" aria-pressed="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          <span>Uncompleted</span>
+        </button>
+        <button type="button" class="filter-chip" data-filter="high-pyq" aria-pressed="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--status-pyq)" stroke-width="2" aria-hidden="true"><path d="M12 2c1 3 4 5 4 9a6 6 0 1 1-12 0c0-4 3-6 4-9z"></path></svg>
+          <span>High-yield (&ge; x3)</span>
+        </button>
+        <button type="button" class="filter-chip" data-filter="musa" aria-pressed="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--status-musa)" stroke-width="2" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <span>Musa list</span>
+        </button>
+        <button type="button" class="filter-chip" data-filter="syllabus" aria-pressed="false">
+          <span>Syllabus only</span>
+        </button>
       </div>
 
       <!-- Main Dynamic Content Container -->
@@ -118,16 +177,50 @@
     </main>
   </div>
 
+  <!-- Floating Text Highlighting Toolbar -->
+  <div class="highlight-toolbar" id="highlight-toolbar" role="toolbar" aria-label="Text highlight options">
+    <button type="button" class="btn-hl-color color-yellow" data-color="yellow" aria-label="Highlight in yellow" title="Highlight Yellow"></button>
+    <button type="button" class="btn-hl-color color-green" data-color="green" aria-label="Highlight in green" title="Highlight Green"></button>
+    <button type="button" class="btn-hl-color color-pink" data-color="pink" aria-label="Highlight in pink" title="Highlight Pink"></button>
+    <button type="button" class="btn-hl-color color-blue" data-color="blue" aria-label="Highlight in blue" title="Highlight Blue"></button>
+    <button type="button" class="btn-hl-remove" id="btn-hl-remove" aria-label="Remove highlight" title="Remove highlight">&#10005; Remove</button>
+  </div>
+
   <!-- Back to Top Button -->
-  <button class="back-to-top" id="back-to-top" title="Back to Top">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+  <button type="button" class="back-to-top" id="back-to-top" aria-label="Back to top" title="Back to top">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
       <polyline points="18 15 12 9 6 15"></polyline>
     </svg>
   </button>
 
-  <!-- Pre-bundled Data (Works offline and on file:// without CORS) -->
+  <!-- Export/Import Backup Modal -->
+  <div class="modal-overlay" id="backup-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-content">
+      <h2 class="modal-title" id="modal-title">Backup &amp; Restore Study Data</h2>
+      <p class="modal-desc">Export your highlights, starred bookmarks, and completed question ticks as a JSON file, or restore from a previously saved backup.</p>
+      
+      <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+        <button type="button" class="btn-header" id="btn-do-export" style="justify-content:center; width:100%; min-height:40px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Export Backup (JSON)
+        </button>
+
+        <label class="btn-header" style="justify-content:center; width:100%; min-height:40px; cursor:pointer;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Import Backup (JSON)
+          <input type="file" id="import-file-input" accept=".json" style="display:none;">
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-header" id="btn-close-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pre-bundled Data (Runs offline on file://) -->
   <script src="assets/js/data.js"></script>
-  <!-- Application Logic -->
+  <!-- Main Application Logic -->
   <script src="assets/js/app.js"></script>
 </body>
 </html>

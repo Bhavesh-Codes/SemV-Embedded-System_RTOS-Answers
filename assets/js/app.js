@@ -1,30 +1,72 @@
 /**
- * Embedded Systems & RTOS Study Guide - Interactive Dashboard App
+ * Embedded Systems & RTOS Study Guide - Technical Datasheet Design System
+ * 
  * Features:
- * - Direct-open zero-CORS file:// support
- * - LaTeX math rendering with KaTeX and built-in offline mathematical typography fallback
- * - Star (Bookmark) and Tick (Completed / Studied) options for all questions & modules
- * - LocalStorage persistence
- * - Real-time full-text search & quick filters
- * - Accordion controls, code copying, and mobile drawer
+ * - 0. In-place toggling (no scroll jump, no accordion collapse, no full re-render)
+ * - 1. Persistent text highlighting (4 colors, cross-element, touch, export/import)
+ * - 2. 100% Offline KaTeX math rendering with fallback
+ * - 3. Technical typography & type scale
+ * - 4. Accessibility (:focus-visible, aria-expanded, aria-pressed, role="progressbar")
+ * - 5. Print stylesheet support
+ * - 6. Search hotkeys ('/', Ctrl+K, Esc, arrow key navigation)
+ * - 7. Compact layout & SVG filter icons
+ * - 8. Technical datasheet visual identity & Dark theme toggle
+ * - 9. Dynamic question counts & zero CORS file:// execution
  */
 
-// Global State
+// ==========================================================================
+// Safe Storage with In-Memory Fallback
+// ==========================================================================
+const storage = {
+  _mem: {},
+  getItem(key) {
+    try {
+      const val = localStorage.getItem(key);
+      return val !== null ? val : (this._mem[key] || null);
+    } catch (e) {
+      return this._mem[key] || null;
+    }
+  },
+  setItem(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      this._mem[key] = String(value);
+    }
+  },
+  removeItem(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      delete this._mem[key];
+    }
+  }
+};
+
+// ==========================================================================
+// Global Application State
+// ==========================================================================
 let studyData = [];
 let currentModuleId = 1;
 let currentFilter = 'all'; // 'all', 'starred', 'completed', 'uncompleted', 'high-pyq', 'musa', 'syllabus'
 let searchQuery = '';
+let searchResultsList = [];
+let selectedSearchIndex = -1;
 
-// User Progress & Bookmarks (with LocalStorage persistence)
+// User Data Sets
 let starredQuestions = new Set();
 let completedQuestions = new Set();
 let starredModules = new Set();
+let questionHighlights = {}; // { [qId]: [ { id, color, text, prefix, suffix, offsetHint } ] }
+
+// Active Highlight Selection Context
+let currentSelectionRange = null;
+let currentHighlightTarget = null; // clicked existing <mark>
 
 // DOM Elements
 const sidebarNav = document.getElementById('sidebar-nav');
 const contentContainer = document.getElementById('content-container');
 const searchInput = document.getElementById('search-input');
-const searchCount = document.getElementById('search-count');
 const searchDropdown = document.getElementById('search-dropdown');
 const filterChips = document.querySelectorAll('.filter-chip');
 const mobileMenuBtn = document.getElementById('mobile-menu-btn');
@@ -33,425 +75,267 @@ const sidebarOverlay = document.getElementById('sidebar-overlay');
 const backToTopBtn = document.getElementById('back-to-top');
 const expandAllBtn = document.getElementById('btn-expand-all');
 const collapseAllBtn = document.getElementById('btn-collapse-all');
+const themeToggleBtn = document.getElementById('btn-theme-toggle');
+const themeIconSun = document.getElementById('theme-icon-sun');
+const themeIconMoon = document.getElementById('theme-icon-moon');
+const highlightToolbar = document.getElementById('highlight-toolbar');
+const backupModal = document.getElementById('backup-modal');
+const btnExportImport = document.getElementById('btn-export-import');
+const btnCloseModal = document.getElementById('btn-close-modal');
+const btnDoExport = document.getElementById('btn-do-export');
+const importFileInput = document.getElementById('import-file-input');
 
-// Initialize Application
+// ==========================================================================
+// Initialization
+// ==========================================================================
 document.addEventListener('DOMContentLoaded', async () => {
+  initTheme();
   loadSavedUserData();
   setupEventListeners();
   await loadAllModuleData();
+  computeGlobalStats();
   renderSidebar();
   renderCurrentModule();
-  setupCodeCopyButtons();
-  updateGlobalStats();
 });
 
-// Load user bookmarks & completion state from localStorage
+// Theme Management
+function initTheme() {
+  const savedTheme = storage.getItem('es_theme');
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const activeTheme = savedTheme ? savedTheme : (prefersDark ? 'dark' : 'light');
+  applyTheme(activeTheme);
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  storage.setItem('es_theme', theme);
+  if (themeIconSun && themeIconMoon) {
+    if (theme === 'dark') {
+      themeIconSun.style.display = 'inline';
+      themeIconMoon.style.display = 'none';
+    } else {
+      themeIconSun.style.display = 'none';
+      themeIconMoon.style.display = 'inline';
+    }
+  }
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// User Data Loading & Persistence
 function loadSavedUserData() {
   try {
-    const savedStars = localStorage.getItem('es_starred_questions');
-    if (savedStars) starredQuestions = new Set(JSON.parse(savedStars));
+    const stars = storage.getItem('es_starred_questions');
+    if (stars) starredQuestions = new Set(JSON.parse(stars));
 
-    const savedCompleted = localStorage.getItem('es_completed_questions');
-    if (savedCompleted) completedQuestions = new Set(JSON.parse(savedCompleted));
+    const comp = storage.getItem('es_completed_questions');
+    if (comp) completedQuestions = new Set(JSON.parse(comp));
 
-    const savedModStars = localStorage.getItem('es_starred_modules');
-    if (savedModStars) starredModules = new Set(JSON.parse(savedModStars));
+    const modStars = storage.getItem('es_starred_modules');
+    if (modStars) starredModules = new Set(JSON.parse(modStars));
+
+    const hls = storage.getItem('es_highlights');
+    if (hls) questionHighlights = JSON.parse(hls);
   } catch (e) {
-    console.warn('LocalStorage not available, falling back to session memory.', e);
+    console.warn('Error reading saved user data:', e);
   }
 }
 
 function saveUserData() {
-  try {
-    localStorage.setItem('es_starred_questions', JSON.stringify(Array.from(starredQuestions)));
-    localStorage.setItem('es_completed_questions', JSON.stringify(Array.from(completedQuestions)));
-    localStorage.setItem('es_starred_modules', JSON.stringify(Array.from(starredModules)));
-  } catch (e) {
-    // Session fallback
-  }
+  storage.setItem('es_starred_questions', JSON.stringify(Array.from(starredQuestions)));
+  storage.setItem('es_completed_questions', JSON.stringify(Array.from(completedQuestions)));
+  storage.setItem('es_starred_modules', JSON.stringify(Array.from(starredModules)));
+  storage.setItem('es_highlights', JSON.stringify(questionHighlights));
 }
 
-// Load data for all modules
+// Load Modules
 async function loadAllModuleData() {
-  const modulesToLoad = [1, 2, 3, 4, 5, 6];
   studyData = [];
-
-  for (const modNum of modulesToLoad) {
+  for (let i = 1; i <= 6; i++) {
+    if (window.embeddedStudyData && window.embeddedStudyData[i]) {
+      studyData.push(window.embeddedStudyData[i]);
+      continue;
+    }
     try {
-      if (window.embeddedStudyData && window.embeddedStudyData[modNum]) {
-        studyData.push(window.embeddedStudyData[modNum]);
-        continue;
-      }
-      
-      const response = await fetch(`data/mod${modNum}_answers.json`);
-      if (response.ok) {
-        const json = await response.json();
-        studyData.push(json);
-      }
+      const res = await fetch(`data/mod${i}_answers.json`);
+      if (res.ok) studyData.push(await res.json());
     } catch (e) {
-      if (window.embeddedStudyData && window.embeddedStudyData[modNum]) {
-        studyData.push(window.embeddedStudyData[modNum]);
+      if (window.embeddedStudyData && window.embeddedStudyData[i]) {
+        studyData.push(window.embeddedStudyData[i]);
       }
     }
   }
-
   studyData.sort((a, b) => a.module - b.module);
 }
 
-// Update sidebar stats & overall progress bar
-function updateGlobalStats() {
+// Compute dynamic stats and fill labels
+function computeGlobalStats() {
   let totalQuestions = 0;
-  let completedCount = 0;
-  let starredCount = 0;
-  let pyqHighCount = 0;
+  let highYieldCount = 0;
 
   studyData.forEach(mod => {
     (mod.topics || []).forEach(t => {
       (t.questions || []).forEach(q => {
         totalQuestions++;
-        if (completedQuestions.has(q.id)) completedCount++;
-        if (starredQuestions.has(q.id)) starredCount++;
-
         const isHigh = (q.tags || []).some(tag => {
           const m = tag.match(/x(\d+)/i);
           return m && parseInt(m[1]) >= 3;
         });
-        if (isHigh) pyqHighCount++;
+        if (isHigh) highYieldCount++;
       });
     });
   });
 
-  // Sidebar header stats
+  // Update DOM counts dynamically
   const totalElem = document.getElementById('total-questions-count');
   if (totalElem) totalElem.textContent = `${totalQuestions} Questions`;
-  
+
+  const totalStat = document.getElementById('syllabus-total-stat');
+  if (totalStat) totalStat.textContent = totalQuestions;
+
   const highElem = document.getElementById('high-freq-count');
-  if (highElem) highElem.textContent = `${pyqHighCount} High-Yield`;
+  if (highElem) highElem.textContent = `${highYieldCount} High-Yield`;
 
-  // Syllabus progress widget
-  const pct = totalQuestions > 0 ? Math.round((completedCount / totalQuestions) * 100) : 0;
-  const pctElem = document.getElementById('syllabus-progress-pct');
-  if (pctElem) pctElem.textContent = `${pct}%`;
+  const chipAll = document.getElementById('chip-count-all');
+  if (chipAll) chipAll.textContent = totalQuestions;
 
-  const compElem = document.getElementById('syllabus-completed-count');
-  if (compElem) compElem.textContent = completedCount;
-
-  const starElem = document.getElementById('syllabus-starred-count');
-  if (starElem) starElem.textContent = starredCount;
-
-  const barElem = document.getElementById('syllabus-progress-bar');
-  if (barElem) barElem.style.width = `${pct}%`;
-
-  // Filter chips count
-  const filterStarCount = document.getElementById('filter-starred-count');
-  if (filterStarCount) filterStarCount.textContent = starredCount;
-
-  const filterCompCount = document.getElementById('filter-completed-count');
-  if (filterCompCount) filterCompCount.textContent = completedCount;
+  updateCountersInPlace();
 }
 
-// Render Left Sidebar Navigation
-function renderSidebar() {
-  if (!sidebarNav) return;
-  sidebarNav.innerHTML = '';
-
-  const navSection = document.createElement('div');
-  navSection.className = 'nav-section-title';
-  navSection.textContent = 'Curriculum Modules';
-  sidebarNav.appendChild(navSection);
-
-  studyData.forEach(mod => {
-    let qCount = 0;
-    let completedInMod = 0;
-    let hasStarInMod = starredModules.has(mod.module);
-
-    (mod.topics || []).forEach(t => {
-      (t.questions || []).forEach(q => {
-        qCount++;
-        if (completedQuestions.has(q.id)) completedInMod++;
-        if (starredQuestions.has(q.id)) hasStarInMod = true;
-      });
-    });
-
-    const isAllCompleted = qCount > 0 && completedInMod === qCount;
-
-    const a = document.createElement('a');
-    a.className = `nav-item ${mod.module === currentModuleId ? 'active' : ''}`;
-    a.dataset.modId = mod.module;
-    a.href = `#module-${mod.module}`;
-
-    a.innerHTML = `
-      <div class="nav-item-title-wrapper">
-        ${hasStarInMod ? `<span class="nav-star-indicator" title="Contains starred questions">&#11088;</span>` : ''}
-        <span>Mod ${mod.module}: ${escapeHtml(mod.title.split('&')[0].trim())}</span>
-      </div>
-      <div class="nav-item-meta">
-        ${isAllCompleted ? `<span class="nav-completed-badge" title="All completed">&#10003; Done</span>` : `<span class="nav-badge">${completedInMod}/${qCount}</span>`}
-      </div>
-    `;
-
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      switchModule(mod.module);
-      closeMobileSidebar();
-    });
-
-    sidebarNav.appendChild(a);
-  });
-}
-
-// Switch active module
-function switchModule(modId) {
-  currentModuleId = parseInt(modId);
-
-  document.querySelectorAll('.nav-item').forEach(el => {
-    if (parseInt(el.dataset.modId) === currentModuleId) {
-      el.classList.add('active');
-    } else {
-      el.classList.remove('active');
-    }
-  });
-
-  renderCurrentModule();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-// Render the active module's content
-function renderCurrentModule() {
-  if (!contentContainer) return;
-  const mod = studyData.find(m => m.module === currentModuleId);
-  if (!mod) {
-    contentContainer.innerHTML = `
-      <div style="text-align:center; padding: 60px 20px;">
-        <h2>Loading module data...</h2>
-        <p style="color:var(--text-muted); margin-top:8px;">Compiling verified answers from teacher PDFs.</p>
-      </div>
-    `;
-    return;
-  }
-
-  // Calculate module statistics
-  let totalModQuestions = 0;
-  let completedModQuestions = 0;
-  let starredModQuestions = 0;
-  let musaCount = 0;
-
-  (mod.topics || []).forEach(t => {
-    (t.questions || []).forEach(q => {
-      totalModQuestions++;
-      if (completedQuestions.has(q.id)) completedModQuestions++;
-      if (starredQuestions.has(q.id)) starredModQuestions++;
-      (q.tags || []).forEach(tag => {
-        if (tag.toLowerCase().includes('musa')) musaCount++;
-      });
-    });
-  });
-
-  const modProgressPct = totalModQuestions > 0 ? Math.round((completedModQuestions / totalModQuestions) * 100) : 0;
-  const isModStarred = starredModules.has(mod.module);
-  const isModAllCompleted = totalModQuestions > 0 && completedModQuestions === totalModQuestions;
-
-  let html = `
-    <div class="module-section active" id="module-${mod.module}">
-      <!-- Module Hero Header -->
-      <div class="module-hero">
-        <div class="module-hero-top">
-          <div>
-            <div class="module-number">Module ${mod.module} &bull; University Exam Guide</div>
-            <h1 class="module-title">${escapeHtml(mod.title)}</h1>
-          </div>
-          
-          <!-- Module Level Quick Actions -->
-          <div class="module-actions">
-            <button class="btn-module-action ${isModStarred ? 'starred' : ''}" onclick="toggleStarModule(${mod.module}, event)" title="Star entire module">
-              <span>${isModStarred ? '&#11088; Starred' : '&#9734; Star Module'}</span>
-            </button>
-            <button class="btn-module-action ${isModAllCompleted ? 'completed' : ''}" onclick="toggleCompleteAllModule(${mod.module}, event)" title="${isModAllCompleted ? 'Mark all uncompleted' : 'Mark all completed'}">
-              <span>${isModAllCompleted ? '&#10003; All Completed' : '&#9744; Mark All Done'}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Module Progress Bar -->
-        <div class="module-progress-wrapper">
-          <div class="progress-info">
-            <span>Module Completion Progress</span>
-            <span><strong>${completedModQuestions}</strong> of ${totalModQuestions} completed (${modProgressPct}%)</span>
-          </div>
-          <div class="progress-track">
-            <div class="progress-bar-fill" style="width: ${modProgressPct}%;"></div>
-          </div>
-        </div>
-      </div>
-  `;
-
-  // Render Topics and Questions
-  let totalRenderedInMod = 0;
-
-  (mod.topics || []).forEach(topic => {
-    const filteredQuestions = (topic.questions || []).filter(q => matchesFilter(q));
-    if (filteredQuestions.length === 0 && currentFilter !== 'all') {
-      return;
-    }
-
-    totalRenderedInMod += filteredQuestions.length;
-
-    html += `
-      <div class="topic-group" id="topic-${topic.id.replace('.', '-')}">
-        <div class="topic-header">
-          <h2 class="topic-title">
-            <span class="topic-id-badge">${topic.id}</span>
-            <span>${escapeHtml(topic.title)}</span>
-          </h2>
-          <span style="font-size:12px; color:var(--text-muted);">${filteredQuestions.length} questions</span>
-        </div>
-        <div class="question-list">
-    `;
-
-    filteredQuestions.forEach(q => {
-      html += renderQuestionCard(q, topic.id);
-    });
-
-    html += `
-        </div>
-      </div>
-    `;
-  });
-
-  if (totalRenderedInMod === 0) {
-    html += `
-      <div style="text-align:center; padding: 48px 20px; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); margin: 20px 0;">
-        <h3 style="font-size:16px; color:var(--text-main); margin-bottom:6px;">No questions match filter: "${escapeHtml(currentFilter)}"</h3>
-        <p style="font-size:13px; color:var(--text-muted);">Try selecting "All Questions" from the filter bar above.</p>
-      </div>
-    `;
-  }
-
-  // Module Navigation Footer (Prev / Next)
-  const prevMod = studyData.find(m => m.module === currentModuleId - 1);
-  const nextMod = studyData.find(m => m.module === currentModuleId + 1);
-
-  html += `
-    <div class="module-nav-footer">
-      ${prevMod ? `
-        <button class="nav-page-btn" onclick="switchModule(${prevMod.module})">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-          Previous: Mod ${prevMod.module}
-        </button>
-      ` : `<div></div>`}
-      ${nextMod ? `
-        <button class="nav-page-btn" onclick="switchModule(${nextMod.module})">
-          Next: Mod ${nextMod.module}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-        </button>
-      ` : `<div></div>`}
-    </div>
-  </div>`;
-
-  contentContainer.innerHTML = html;
-  
-  // Format math and setup interactions
-  applyMathFormatting(contentContainer);
-  setupAccordionClicks();
-  setupCodeCopyButtons();
-}
-
-// Render individual question card
-function renderQuestionCard(q, topicId) {
-  const isStarred = starredQuestions.has(q.id);
-  const isCompleted = completedQuestions.has(q.id);
-  const tagsHtml = renderTags(q.tags || [], isCompleted);
-  const safeId = `q-${q.id.replace(/\./g, '-')}`;
-
-  return `
-    <div class="question-card ${isStarred ? 'is-starred' : ''} ${isCompleted ? 'is-completed' : ''}" id="${safeId}" data-qid="${q.id}">
-      <div class="question-header" onclick="toggleQuestion('${safeId}')">
-        <div class="question-title-area">
-          <div class="question-actions-row">
-            <!-- Star Button -->
-            <button class="btn-q-action btn-q-star ${isStarred ? 'active' : ''}" onclick="toggleStarQuestion('${q.id}', event)" title="Star/Bookmark this question for quick revision">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="${isStarred ? '#F59E0B' : 'none'}" stroke="currentColor" stroke-width="2">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-              </svg>
-              <span>${isStarred ? 'Starred' : 'Star'}</span>
-            </button>
-
-            <!-- Tick / Completed Button -->
-            <button class="btn-q-action btn-q-tick ${isCompleted ? 'active' : ''}" onclick="toggleCompleteQuestion('${q.id}', event)" title="Mark as studied/completed">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-              <span>${isCompleted ? 'Completed' : 'Mark Done'}</span>
-            </button>
-
-            <span class="question-num">Question ${q.id}</span>
-          </div>
-
-          <div class="question-text">${escapeHtml(q.question)}</div>
-        </div>
-        
-        <div class="question-meta">
-          ${tagsHtml}
-          <svg class="accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </div>
-      </div>
-      <div class="answer-body">
-        ${wrapTablesInContainer(q.answer_html || '<p class="not-found">Answer coming soon.</p>')}
-      </div>
-    </div>
-  `;
-}
-
-// User Action Handlers (Star & Tick)
+// ==========================================================================
+// 0. In-Place Toggles (Star & Complete) - No Scroll Jump, No Accordion Reset
+// ==========================================================================
 window.toggleStarQuestion = function(qId, event) {
-  if (event) event.stopPropagation();
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
 
-  if (starredQuestions.has(qId)) {
+  const isStarred = starredQuestions.has(qId);
+  if (isStarred) {
     starredQuestions.delete(qId);
   } else {
     starredQuestions.add(qId);
   }
-
   saveUserData();
-  updateGlobalStats();
-  renderSidebar();
-  renderCurrentModule();
+
+  // Update card DOM in place
+  const cardId = 'q-' + qId.replace(/\./g, '-');
+  const card = document.getElementById(cardId);
+  if (card) {
+    card.classList.toggle('is-starred', !isStarred);
+    const starBtn = card.querySelector('.btn-q-star');
+    if (starBtn) {
+      starBtn.classList.toggle('active', !isStarred);
+      starBtn.setAttribute('aria-pressed', String(!isStarred));
+      starBtn.setAttribute('title', !isStarred ? 'Unstar question' : 'Star question');
+      const starSvg = starBtn.querySelector('svg');
+      if (starSvg) {
+        starSvg.setAttribute('fill', !isStarred ? 'var(--status-star)' : 'none');
+      }
+      const label = starBtn.querySelector('.btn-action-label');
+      if (label) label.textContent = !isStarred ? 'Starred' : 'Star';
+    }
+
+    // If active filter is 'starred' and item unstarred, keep visible but dimmed
+    if (currentFilter === 'starred') {
+      card.classList.toggle('is-filter-dimmed', isStarred);
+    }
+  }
+
+  updateCountersInPlace();
 };
 
 window.toggleCompleteQuestion = function(qId, event) {
-  if (event) event.stopPropagation();
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
 
-  if (completedQuestions.has(qId)) {
+  const isCompleted = completedQuestions.has(qId);
+  if (isCompleted) {
     completedQuestions.delete(qId);
   } else {
     completedQuestions.add(qId);
   }
-
   saveUserData();
-  updateGlobalStats();
-  renderSidebar();
-  renderCurrentModule();
+
+  // Update card DOM in place
+  const cardId = 'q-' + qId.replace(/\./g, '-');
+  const card = document.getElementById(cardId);
+  if (card) {
+    card.classList.toggle('is-completed', !isCompleted);
+    const tickBtn = card.querySelector('.btn-q-tick');
+    if (tickBtn) {
+      tickBtn.classList.toggle('active', !isCompleted);
+      tickBtn.setAttribute('aria-pressed', String(!isCompleted));
+      tickBtn.setAttribute('title', !isCompleted ? 'Mark uncompleted' : 'Mark completed');
+      const label = tickBtn.querySelector('.btn-action-label');
+      if (label) label.textContent = !isCompleted ? 'Completed' : 'Mark done';
+    }
+
+    // Completed badge in question meta
+    const metaArea = card.querySelector('.question-meta');
+    if (metaArea) {
+      let badge = metaArea.querySelector('.badge-completed');
+      if (!isCompleted && !badge) {
+        badge = document.createElement('span');
+        badge.className = 'badge badge-completed';
+        badge.textContent = '✓ Completed';
+        metaArea.prepend(badge);
+      } else if (isCompleted && badge) {
+        badge.remove();
+      }
+    }
+
+    // If active filter is completed/uncompleted, keep visible but dimmed
+    if (currentFilter === 'completed') {
+      card.classList.toggle('is-filter-dimmed', isCompleted);
+    } else if (currentFilter === 'uncompleted') {
+      card.classList.toggle('is-filter-dimmed', !isCompleted);
+    }
+  }
+
+  updateCountersInPlace();
 };
 
 window.toggleStarModule = function(modId, event) {
-  if (event) event.stopPropagation();
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
   modId = parseInt(modId);
 
-  if (starredModules.has(modId)) {
+  const isStarred = starredModules.has(modId);
+  if (isStarred) {
     starredModules.delete(modId);
   } else {
     starredModules.add(modId);
   }
-
   saveUserData();
-  renderSidebar();
-  renderCurrentModule();
+
+  // Update module hero button in place
+  const modHero = document.querySelector(`.module-section[id="module-${modId}"] .module-hero-slim`);
+  if (modHero) {
+    const starBtn = modHero.querySelector('.btn-module-star');
+    if (starBtn) {
+      starBtn.classList.toggle('starred', !isStarred);
+      starBtn.setAttribute('aria-pressed', String(!isStarred));
+      starBtn.querySelector('span').textContent = !isStarred ? '★ Starred' : '☆ Star module';
+    }
+  }
+
+  updateCountersInPlace();
 };
 
 window.toggleCompleteAllModule = function(modId, event) {
-  if (event) event.stopPropagation();
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
   modId = parseInt(modId);
 
   const mod = studyData.find(m => m.module === modId);
@@ -470,22 +354,904 @@ window.toggleCompleteAllModule = function(modId, event) {
     } else {
       completedQuestions.add(id);
     }
+    // Update individual cards currently displayed
+    const card = document.getElementById('q-' + id.replace(/\./g, '-'));
+    if (card) {
+      card.classList.toggle('is-completed', !allDone);
+      const tickBtn = card.querySelector('.btn-q-tick');
+      if (tickBtn) {
+        tickBtn.classList.toggle('active', !allDone);
+        tickBtn.setAttribute('aria-pressed', String(!allDone));
+        const label = tickBtn.querySelector('.btn-action-label');
+        if (label) label.textContent = !allDone ? 'Completed' : 'Mark done';
+      }
+      const metaArea = card.querySelector('.question-meta');
+      if (metaArea) {
+        let badge = metaArea.querySelector('.badge-completed');
+        if (!allDone && !badge) {
+          badge = document.createElement('span');
+          badge.className = 'badge badge-completed';
+          badge.textContent = '✓ Completed';
+          metaArea.prepend(badge);
+        } else if (allDone && badge) {
+          badge.remove();
+        }
+      }
+    }
   });
 
   saveUserData();
-  updateGlobalStats();
-  renderSidebar();
-  renderCurrentModule();
+  updateCountersInPlace();
 };
 
-// ============================================================================
-// MATHEMATICAL TYPESETTING ENGINE (KaTeX with Full Offline Fallback)
-// ============================================================================
+// Update dependent counters, progress bars, and sidebar badges in place
+function updateCountersInPlace() {
+  let totalAll = 0;
+  let completedAll = 0;
+  let starredAll = 0;
 
-function applyMathFormatting(container) {
+  studyData.forEach(mod => {
+    let modTotal = 0;
+    let modCompleted = 0;
+    let modHasStar = starredModules.has(mod.module);
+
+    (mod.topics || []).forEach(t => {
+      (t.questions || []).forEach(q => {
+        totalAll++;
+        modTotal++;
+        if (completedQuestions.has(q.id)) {
+          completedAll++;
+          modCompleted++;
+        }
+        if (starredQuestions.has(q.id)) {
+          starredAll++;
+          modHasStar = true;
+        }
+      });
+    });
+
+    // Update sidebar nav item for this module
+    const navItem = document.querySelector(`.nav-item[data-mod-id="${mod.module}"]`);
+    if (navItem) {
+      const badge = navItem.querySelector('.nav-item-meta');
+      if (badge) {
+        const isAll = modTotal > 0 && modCompleted === modTotal;
+        badge.innerHTML = isAll 
+          ? `<span class="nav-completed-badge">✓ Done</span>`
+          : `<span class="nav-badge">${modCompleted}/${modTotal}</span>`;
+      }
+      const starIndicator = navItem.querySelector('.nav-star-indicator');
+      if (modHasStar && !starIndicator) {
+        const star = document.createElement('span');
+        star.className = 'nav-star-indicator';
+        star.textContent = '★';
+        navItem.querySelector('.nav-item-title-wrapper').prepend(star);
+      } else if (!modHasStar && starIndicator) {
+        starIndicator.remove();
+      }
+    }
+
+    // Update active module hero progress
+    if (mod.module === currentModuleId) {
+      const modHero = document.querySelector(`.module-section[id="module-${mod.module}"] .module-hero-slim`);
+      if (modHero) {
+        const pct = modTotal > 0 ? Math.round((modCompleted / modTotal) * 100) : 0;
+        const progressFill = modHero.querySelector('.progress-bar-fill');
+        if (progressFill) progressFill.style.width = `${pct}%`;
+
+        const progressLabel = modHero.querySelector('.module-hero-progress-text');
+        if (progressLabel) progressLabel.textContent = `${modCompleted} of ${modTotal} completed (${pct}%)`;
+
+        const markAllBtn = modHero.querySelector('.btn-module-complete-all');
+        if (markAllBtn) {
+          const isAll = modTotal > 0 && modCompleted === modTotal;
+          markAllBtn.classList.toggle('completed', isAll);
+          markAllBtn.setAttribute('aria-pressed', String(isAll));
+          markAllBtn.querySelector('span').textContent = isAll ? '✓ All done' : 'Mark all done';
+        }
+      }
+    }
+  });
+
+  // Overall syllabus progress
+  const pctAll = totalAll > 0 ? Math.round((completedAll / totalAll) * 100) : 0;
+  const pctElem = document.getElementById('syllabus-progress-pct');
+  if (pctElem) pctElem.textContent = `${pctAll}%`;
+
+  const barElem = document.getElementById('syllabus-progress-bar');
+  if (barElem) barElem.style.width = `${pctAll}%`;
+
+  const trackElem = document.getElementById('syllabus-progress-track');
+  if (trackElem) trackElem.setAttribute('aria-valuenow', pctAll);
+
+  const compElem = document.getElementById('syllabus-completed-count');
+  if (compElem) compElem.textContent = completedAll;
+
+  const starElem = document.getElementById('syllabus-starred-count');
+  if (starElem) starElem.textContent = starredAll;
+
+  // Filter chip badge counts
+  const filterStar = document.getElementById('filter-starred-count');
+  if (filterStar) filterStar.textContent = starredAll;
+
+  const filterComp = document.getElementById('filter-completed-count');
+  if (filterComp) filterComp.textContent = completedAll;
+}
+
+// ==========================================================================
+// Sidebar Rendering
+// ==========================================================================
+function renderSidebar() {
+  if (!sidebarNav) return;
+  sidebarNav.innerHTML = '';
+
+  const navSection = document.createElement('div');
+  navSection.className = 'nav-section-title';
+  navSection.textContent = 'Curriculum modules';
+  sidebarNav.appendChild(navSection);
+
+  studyData.forEach(mod => {
+    let qCount = 0;
+    let completedInMod = 0;
+    let hasStarInMod = starredModules.has(mod.module);
+
+    (mod.topics || []).forEach(t => {
+      (t.questions || []).forEach(q => {
+        qCount++;
+        if (completedQuestions.has(q.id)) completedInMod++;
+        if (starredQuestions.has(q.id)) hasStarInMod = true;
+      });
+    });
+
+    const isAll = qCount > 0 && completedInMod === qCount;
+
+    const a = document.createElement('a');
+    a.className = `nav-item ${mod.module === currentModuleId ? 'active' : ''}`;
+    a.dataset.modId = mod.module;
+    a.href = `#module-${mod.module}`;
+    a.setAttribute('role', 'button');
+
+    a.innerHTML = `
+      <div class="nav-item-title-wrapper">
+        ${hasStarInMod ? `<span class="nav-star-indicator">★</span>` : ''}
+        <span>Mod ${mod.module}: ${escapeHtml(mod.title.split('&')[0].trim())}</span>
+      </div>
+      <div class="nav-item-meta">
+        ${isAll ? `<span class="nav-completed-badge">✓ Done</span>` : `<span class="nav-badge">${completedInMod}/${qCount}</span>`}
+      </div>
+    `;
+
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchModule(mod.module);
+      closeMobileSidebar();
+    });
+
+    sidebarNav.appendChild(a);
+  });
+}
+
+function switchModule(modId) {
+  currentModuleId = parseInt(modId);
+
+  document.querySelectorAll('.nav-item').forEach(el => {
+    const isActive = parseInt(el.dataset.modId) === currentModuleId;
+    el.classList.toggle('active', isActive);
+  });
+
+  renderCurrentModule();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ==========================================================================
+// Module & Question Rendering (Slim Layout & Accessible Buttons)
+// ==========================================================================
+function renderCurrentModule() {
+  if (!contentContainer) return;
+  const mod = studyData.find(m => m.module === currentModuleId);
+  if (!mod) {
+    contentContainer.innerHTML = `<div style="padding:40px; text-align:center;">Loading curriculum...</div>`;
+    return;
+  }
+
+  let totalModQuestions = 0;
+  let completedMod = 0;
+  (mod.topics || []).forEach(t => {
+    (t.questions || []).forEach(q => {
+      totalModQuestions++;
+      if (completedQuestions.has(q.id)) completedMod++;
+    });
+  });
+
+  const pct = totalModQuestions > 0 ? Math.round((completedMod / totalModQuestions) * 100) : 0;
+  const isModStarred = starredModules.has(mod.module);
+  const isAllDone = totalModQuestions > 0 && completedMod === totalModQuestions;
+
+  let html = `
+    <div class="module-section active" id="module-${mod.module}">
+      <!-- Slim Module Hero Header -->
+      <header class="module-hero-slim">
+        <div class="module-hero-main">
+          <div class="module-hero-title-area">
+            <span class="module-hero-badge">Module ${mod.module}</span>
+            <h1 class="module-hero-title">${escapeHtml(mod.title)}</h1>
+          </div>
+          <div class="module-hero-actions">
+            <button type="button" class="btn-module-action btn-module-star ${isModStarred ? 'starred' : ''}" onclick="toggleStarModule(${mod.module}, event)" aria-pressed="${isModStarred}" aria-label="Star module ${mod.module}">
+              <span>${isModStarred ? '★ Starred' : '☆ Star module'}</span>
+            </button>
+            <button type="button" class="btn-module-action btn-module-complete-all ${isAllDone ? 'completed' : ''}" onclick="toggleCompleteAllModule(${mod.module}, event)" aria-pressed="${isAllDone}" aria-label="Mark all questions in module ${mod.module} completed">
+              <span>${isAllDone ? '✓ All done' : 'Mark all done'}</span>
+            </button>
+          </div>
+        </div>
+        <div class="module-hero-progress">
+          <span class="module-hero-progress-text">${completedMod} of ${totalModQuestions} completed (${pct}%)</span>
+          <div class="module-hero-progress-track" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Module ${mod.module} completion">
+            <div class="progress-bar-fill" style="width:${pct}%;"></div>
+          </div>
+        </div>
+      </header>
+  `;
+
+  let renderedCount = 0;
+
+  (mod.topics || []).forEach(topic => {
+    const questions = (topic.questions || []).filter(q => matchesFilter(q));
+    if (questions.length === 0 && currentFilter !== 'all') return;
+    renderedCount += questions.length;
+
+    html += `
+      <section class="topic-group" id="topic-${topic.id.replace('.', '-')}" aria-labelledby="heading-${topic.id.replace('.', '-')}">
+        <div class="topic-header">
+          <h2 class="topic-title" id="heading-${topic.id.replace('.', '-')}">
+            <span class="topic-id-badge">${topic.id}</span>
+            <span>${escapeHtml(topic.title)}</span>
+          </h2>
+          <span style="font-size:11.5px; color:var(--text-muted);">${questions.length} questions</span>
+        </div>
+        <div class="question-list">
+    `;
+
+    questions.forEach(q => {
+      html += renderQuestionCard(q);
+    });
+
+    html += `
+        </div>
+      </section>
+    `;
+  });
+
+  if (renderedCount === 0) {
+    html += `
+      <div style="padding: 32px 16px; text-align: center; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); margin: 20px 0;">
+        <p style="font-size: 13.5px; color: var(--text-muted);">No questions match the current filter.</p>
+      </div>
+    `;
+  }
+
+  // Footer Prev / Next
+  const prevMod = studyData.find(m => m.module === currentModuleId - 1);
+  const nextMod = studyData.find(m => m.module === currentModuleId + 1);
+
+  html += `
+    <nav class="module-nav-footer" aria-label="Module pagination">
+      ${prevMod ? `
+        <button type="button" class="nav-page-btn" onclick="switchModule(${prevMod.module})" aria-label="Go to previous module">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          Previous: Mod ${prevMod.module}
+        </button>
+      ` : `<div></div>`}
+      ${nextMod ? `
+        <button type="button" class="nav-page-btn" onclick="switchModule(${nextMod.module})" aria-label="Go to next module">
+          Next: Mod ${nextMod.module}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      ` : `<div></div>`}
+    </nav>
+  </div>`;
+
+  contentContainer.innerHTML = html;
+
+  // Apply math & highlights to the newly rendered module
+  applyMathInContainer(contentContainer);
+  applyHighlightsToContainer(contentContainer);
+  setupCodeCopyButtons();
+}
+
+function renderQuestionCard(q) {
+  const isStarred = starredQuestions.has(q.id);
+  const isCompleted = completedQuestions.has(q.id);
+  const qHighlights = questionHighlights[q.id] || [];
+  const hlCount = qHighlights.length;
+  const safeId = `q-${q.id.replace(/\./g, '-')}`;
+  const answerId = `answer-${q.id.replace(/\./g, '-')}`;
+
+  let tagsHtml = '';
+  if (isCompleted) {
+    tagsHtml += `<span class="badge badge-completed">✓ Completed</span> `;
+  }
+  if (hlCount > 0) {
+    tagsHtml += `<span class="badge badge-highlight-count" title="${hlCount} highlights">🖍 ${hlCount}</span> `;
+  }
+
+  (q.tags || []).forEach(tag => {
+    const lower = tag.toLowerCase().trim();
+    if (lower.startsWith('x')) {
+      const freq = parseInt(lower.slice(1)) || 1;
+      let cls = freq >= 5 ? 'badge-pyq-high' : (freq >= 2 ? 'badge-pyq-med' : 'badge-pyq-low');
+      tagsHtml += `<span class="badge ${cls}">${escapeHtml(tag)}</span> `;
+    } else if (lower.includes('musa')) {
+      tagsHtml += `<span class="badge badge-musa">${escapeHtml(tag)}</span> `;
+    } else if (lower.includes('syllabus')) {
+      tagsHtml += `<span class="badge badge-syllabus">Syllabus</span> `;
+    } else {
+      tagsHtml += `<span class="badge badge-pyq-low">${escapeHtml(tag)}</span> `;
+    }
+  });
+
+  return `
+    <article class="question-card ${isStarred ? 'is-starred' : ''} ${isCompleted ? 'is-completed' : ''}" id="${safeId}" data-qid="${q.id}">
+      <div class="question-header-btn" role="button" tabindex="0" onclick="toggleQuestion('${safeId}', event)" onkeydown="handleHeaderKeydown('${safeId}', event)" aria-expanded="false" aria-controls="${answerId}">
+        <div class="question-title-area">
+          <div class="question-actions-row">
+            <!-- Star Button -->
+            <button type="button" class="btn-q-action btn-q-star ${isStarred ? 'active' : ''}" onclick="toggleStarQuestion('${q.id}', event)" aria-pressed="${isStarred}" aria-label="${isStarred ? 'Unstar question' : 'Star question'}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="${isStarred ? 'var(--status-star)' : 'none'}" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+              <span class="btn-action-label">${isStarred ? 'Starred' : 'Star'}</span>
+            </button>
+
+            <!-- Complete Button -->
+            <button type="button" class="btn-q-action btn-q-tick ${isCompleted ? 'active' : ''}" onclick="toggleCompleteQuestion('${q.id}', event)" aria-pressed="${isCompleted}" aria-label="${isCompleted ? 'Mark uncompleted' : 'Mark completed'}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span class="btn-action-label">${isCompleted ? 'Completed' : 'Mark done'}</span>
+            </button>
+
+            <span class="question-num">Question ${q.id}</span>
+          </div>
+
+          <div class="question-text">${escapeHtml(q.question)}</div>
+        </div>
+
+        <div class="question-meta">
+          ${tagsHtml}
+          <svg class="accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      </div>
+
+      <div class="answer-body" id="${answerId}">
+        ${wrapTablesInContainer(q.answer_html || '<p class="not-found">Answer coming soon.</p>')}
+        
+        <div class="answer-footer-controls">
+          <button type="button" class="btn-answer-subtle" onclick="clearQuestionHighlights('${q.id}')">
+            Clear highlights
+          </button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function wrapTablesInContainer(html) {
+  return html.replace(/<table class="comparison-table">([\s\S]*?)<\/table>/gi, (match) => {
+    return `<div class="table-wrapper">${match}</div>`;
+  });
+}
+
+// Accordion Toggle
+window.toggleQuestion = function(cardId, event) {
+  if (event && event.target) {
+    if (event.target.closest('.btn-q-action, .btn-answer-subtle, .code-copy-btn, mark.highlight')) {
+      return;
+    }
+  }
+  // Selecting text inside question header must not toggle accordion
+  if (window.getSelection && window.getSelection().toString().trim().length > 0) {
+    return;
+  }
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const isOpen = card.classList.toggle('open');
+  const btn = card.querySelector('.question-header-btn');
+  if (btn) btn.setAttribute('aria-expanded', String(isOpen));
+
+  // When opened, ensure KaTeX math and highlights are rendered inside
+  if (isOpen) {
+    const answerBody = card.querySelector('.answer-body');
+    if (answerBody) {
+      applyMathInContainer(answerBody);
+      const qId = card.getAttribute('data-qid');
+      if (qId) applyHighlightsToAnswer(qId, answerBody);
+    }
+  }
+};
+
+window.handleHeaderKeydown = function(cardId, event) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    if (event.target && event.target.classList.contains('question-header-btn')) {
+      event.preventDefault();
+      toggleQuestion(cardId, event);
+    }
+  }
+};
+
+function expandAllCurrent() {
+  document.querySelectorAll('.question-card').forEach(card => {
+    card.classList.add('open');
+    const btn = card.querySelector('.question-header-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    const answerBody = card.querySelector('.answer-body');
+    if (answerBody) {
+      applyMathInContainer(answerBody);
+      const qId = card.getAttribute('data-qid');
+      if (qId) applyHighlightsToAnswer(qId, answerBody);
+    }
+  });
+}
+
+function collapseAllCurrent() {
+  document.querySelectorAll('.question-card').forEach(card => {
+    card.classList.remove('open');
+    const btn = card.querySelector('.question-header-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+// Filter Logic
+function matchesFilter(q) {
+  if (currentFilter === 'all') return true;
+  if (currentFilter === 'starred') return starredQuestions.has(q.id);
+  if (currentFilter === 'completed') return completedQuestions.has(q.id);
+  if (currentFilter === 'uncompleted') return !completedQuestions.has(q.id);
+
+  const tags = (q.tags || []).map(t => t.toLowerCase());
+  if (currentFilter === 'high-pyq') {
+    return tags.some(t => {
+      const m = t.match(/x(\d+)/i);
+      return m && parseInt(m[1]) >= 3;
+    });
+  }
+  if (currentFilter === 'musa') return tags.some(t => t.includes('musa'));
+  if (currentFilter === 'syllabus') return tags.some(t => t.includes('syllabus'));
+  return true;
+}
+
+// ==========================================================================
+// 1. Persistent Highlighting Engine
+// ==========================================================================
+function initHighlightListeners() {
+  // Listen for mouseup and touchend inside answer bodies
+  document.addEventListener('mouseup', handleTextSelection);
+  document.addEventListener('touchend', handleTextSelection);
+
+  // Touch selection change support (debounced)
+  let selTimeout = null;
+  document.addEventListener('selectionchange', () => {
+    clearTimeout(selTimeout);
+    selTimeout = setTimeout(() => {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+        handleTextSelection({ target: document.body });
+      }
+    }, 250);
+  });
+
+  // Esc closes toolbar
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && highlightToolbar && highlightToolbar.classList.contains('active')) {
+      hideHighlightToolbar();
+    }
+  });
+
+  // Toolbar color buttons
+  document.querySelectorAll('.btn-hl-color').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const color = btn.getAttribute('data-color');
+      if (currentHighlightTarget) {
+        // Change color of existing highlight
+        updateExistingHighlightColor(currentHighlightTarget, color);
+      } else if (currentSelectionRange) {
+        // Create new highlight
+        createNewHighlight(color);
+      }
+      hideHighlightToolbar();
+    });
+  });
+
+  // Remove highlight button
+  const removeBtn = document.getElementById('btn-hl-remove');
+  if (removeBtn) {
+    removeBtn.addEventListener('click', () => {
+      if (currentHighlightTarget) {
+        removeHighlightRecord(currentHighlightTarget);
+      }
+      hideHighlightToolbar();
+    });
+  }
+
+  // Click on existing highlight to show options
+  document.addEventListener('click', (e) => {
+    const mark = e.target.closest('mark.highlight');
+    if (mark) {
+      e.stopPropagation();
+      currentHighlightTarget = mark;
+      currentSelectionRange = null;
+      positionToolbarAtRect(mark.getBoundingClientRect());
+    } else if (highlightToolbar && !highlightToolbar.contains(e.target)) {
+      hideHighlightToolbar();
+    }
+  });
+}
+
+function handleTextSelection(e) {
+  // If clicking inside toolbar, ignore
+  if (highlightToolbar && highlightToolbar.contains(e.target)) return;
+
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+
+  const range = sel.getRangeAt(0);
+  // Ensure selection is inside an answer body
+  const answerBody = range.commonAncestorContainer.nodeType === 1 
+    ? range.commonAncestorContainer.closest('.answer-body')
+    : range.commonAncestorContainer.parentElement.closest('.answer-body');
+
+  if (!answerBody) return;
+
+  // Ensure selection doesn't originate from katex
+  if (range.startContainer.parentElement && range.startContainer.parentElement.closest('.katex')) return;
+
+  currentSelectionRange = range.cloneRange();
+  currentHighlightTarget = null;
+  positionToolbarAtRect(range.getBoundingClientRect());
+}
+
+function positionToolbarAtRect(rect) {
+  if (!highlightToolbar || !rect || rect.width === 0) return;
+  highlightToolbar.classList.add('active');
+
+  const toolbarWidth = highlightToolbar.offsetWidth || 180;
+  const toolbarHeight = highlightToolbar.offsetHeight || 36;
+  const scrollY = window.scrollY || document.documentElement.scrollTop;
+  const scrollX = window.scrollX || document.documentElement.scrollLeft;
+
+  let top = rect.top + scrollY - toolbarHeight - 8;
+  if (top < scrollY + 10) {
+    top = rect.bottom + scrollY + 8; // flip below if offscreen
+  }
+
+  let left = rect.left + scrollX + (rect.width / 2) - (toolbarWidth / 2);
+  if (left < 10) left = 10;
+  if (left + toolbarWidth > window.innerWidth - 10) left = window.innerWidth - toolbarWidth - 10;
+
+  highlightToolbar.style.top = `${top}px`;
+  highlightToolbar.style.left = `${left}px`;
+}
+
+function hideHighlightToolbar() {
+  if (highlightToolbar) {
+    highlightToolbar.classList.remove('active');
+  }
+  currentHighlightTarget = null;
+  currentSelectionRange = null;
+}
+
+function createNewHighlight(color) {
+  if (!currentSelectionRange) return;
+  const range = currentSelectionRange;
+  const answerBody = range.commonAncestorContainer.nodeType === 1 
+    ? range.commonAncestorContainer.closest('.answer-body')
+    : range.commonAncestorContainer.parentElement.closest('.answer-body');
+  if (!answerBody) return;
+
+  const card = answerBody.closest('.question-card');
+  const qId = card ? card.getAttribute('data-qid') : null;
+  if (!qId) return;
+
+  const selectedText = range.toString().trim();
+  if (!selectedText) return;
+
+  // Remove and replace any overlapping highlights
+  const existingMarks = answerBody.querySelectorAll('mark.highlight');
+  existingMarks.forEach(mark => {
+    try {
+      if (range.intersectsNode(mark)) {
+        const oldId = mark.getAttribute('data-highlight-id');
+        if (oldId && questionHighlights[qId]) {
+          questionHighlights[qId] = questionHighlights[qId].filter(h => h.id !== oldId);
+        }
+        const parent = mark.parentNode;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+        parent.normalize();
+      }
+    } catch (e) {}
+  });
+
+  const highlightId = 'hl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+
+  // Compute prefix and suffix context (~30 chars)
+  const fullText = answerBody.textContent || '';
+  const rangeStartOffset = getCharacterOffsetWithin(range.startContainer, range.startOffset, answerBody);
+  const prefix = fullText.substring(Math.max(0, rangeStartOffset - 30), rangeStartOffset);
+  const suffix = fullText.substring(rangeStartOffset + selectedText.length, Math.min(fullText.length, rangeStartOffset + selectedText.length + 30));
+
+  // Wrap text nodes in range
+  wrapRangeInHighlight(range, color, highlightId);
+
+  // Save highlight
+  if (!questionHighlights[qId]) questionHighlights[qId] = [];
+  questionHighlights[qId].push({
+    id: highlightId,
+    color,
+    text: selectedText,
+    prefix,
+    suffix,
+    offsetHint: rangeStartOffset
+  });
+  saveUserData();
+
+  // Update highlight count badge in question header
+  updateCardHighlightBadge(card, qId);
+  window.getSelection().removeAllRanges();
+}
+
+function wrapRangeInHighlight(range, color, highlightId) {
+  const commonAncestor = range.commonAncestorContainer;
+  const startContainer = range.startContainer;
+  const startOffset = range.startOffset;
+  const endContainer = range.endContainer;
+  const endOffset = range.endOffset;
+
+  // Single text node case
+  if (startContainer === endContainer && startContainer.nodeType === Node.TEXT_NODE) {
+    // Ignore inside katex
+    if (startContainer.parentElement && startContainer.parentElement.closest('.katex')) return;
+
+    let targetNode = startContainer;
+    if (endOffset < targetNode.length) {
+      targetNode.splitText(endOffset);
+    }
+    if (startOffset > 0) {
+      targetNode = targetNode.splitText(startOffset);
+    }
+    const mark = document.createElement('mark');
+    mark.className = `highlight highlight-${color}`;
+    mark.setAttribute('data-highlight-id', highlightId);
+    targetNode.parentNode.replaceChild(mark, targetNode);
+    mark.appendChild(targetNode);
+    return;
+  }
+
+  // Cross-node case: walk text nodes
+  const root = commonAncestor.nodeType === Node.TEXT_NODE ? commonAncestor.parentNode : commonAncestor;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (node.parentElement && node.parentElement.closest('.katex')) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const nodesToWrap = [];
+  let started = false;
+
+  let currentNode = walker.nextNode();
+  while (currentNode) {
+    if (currentNode === startContainer) {
+      started = true;
+      nodesToWrap.push({ node: currentNode, isStart: true });
+    } else if (currentNode === endContainer) {
+      nodesToWrap.push({ node: currentNode, isEnd: true });
+      break;
+    } else if (started) {
+      nodesToWrap.push({ node: currentNode });
+    }
+    currentNode = walker.nextNode();
+  }
+
+  nodesToWrap.forEach(item => {
+    let node = item.node;
+    if (item.isStart) {
+      if (startOffset > 0 && startOffset < node.length) {
+        node = node.splitText(startOffset);
+      }
+    }
+    if (item.isEnd) {
+      if (endOffset > 0 && endOffset < node.length) {
+        node.splitText(endOffset);
+      }
+    }
+    const mark = document.createElement('mark');
+    mark.className = `highlight highlight-${color}`;
+    mark.setAttribute('data-highlight-id', highlightId);
+    node.parentNode.replaceChild(mark, node);
+    mark.appendChild(node);
+  });
+}
+
+function updateExistingHighlightColor(mark, color) {
+  const id = mark.getAttribute('data-highlight-id');
+  const card = mark.closest('.question-card');
+  const qId = card ? card.getAttribute('data-qid') : null;
+
+  mark.className = `highlight highlight-${color}`;
+
+  if (qId && questionHighlights[qId]) {
+    const hl = questionHighlights[qId].find(h => h.id === id);
+    if (hl) {
+      hl.color = color;
+      saveUserData();
+    }
+  }
+}
+
+function removeHighlightRecord(mark) {
+  const id = mark.getAttribute('data-highlight-id');
+  const card = mark.closest('.question-card');
+  const qId = card ? card.getAttribute('data-qid') : null;
+
+  // Unwrap mark element
+  const parent = mark.parentNode;
+  while (mark.firstChild) {
+    parent.insertBefore(mark.firstChild, mark);
+  }
+  parent.removeChild(mark);
+  parent.normalize();
+
+  if (qId && questionHighlights[qId]) {
+    questionHighlights[qId] = questionHighlights[qId].filter(h => h.id !== id);
+    saveUserData();
+    if (card) updateCardHighlightBadge(card, qId);
+  }
+}
+
+window.clearQuestionHighlights = function(qId) {
+  if (!confirm(`Clear all highlights for Question ${qId}?`)) return;
+
+  delete questionHighlights[qId];
+  saveUserData();
+
+  const card = document.getElementById('q-' + qId.replace(/\./g, '-'));
+  if (card) {
+    const marks = card.querySelectorAll('mark.highlight');
+    marks.forEach(mark => {
+      const parent = mark.parentNode;
+      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+      parent.removeChild(mark);
+      parent.normalize();
+    });
+    updateCardHighlightBadge(card, qId);
+  }
+};
+
+function updateCardHighlightBadge(card, qId) {
+  const count = (questionHighlights[qId] || []).length;
+  const meta = card.querySelector('.question-meta');
+  if (!meta) return;
+
+  let badge = meta.querySelector('.badge-highlight-count');
+  if (count > 0) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'badge badge-highlight-count';
+      meta.prepend(badge);
+    }
+    badge.textContent = `🖍 ${count}`;
+    badge.title = `${count} highlights`;
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
+function applyHighlightsToContainer(container) {
+  container.querySelectorAll('.question-card').forEach(card => {
+    const qId = card.getAttribute('data-qid');
+    const answerBody = card.querySelector('.answer-body');
+    if (qId && answerBody) {
+      applyHighlightsToAnswer(qId, answerBody);
+    }
+  });
+}
+
+function applyHighlightsToAnswer(qId, answerBody) {
+  const list = questionHighlights[qId];
+  if (!list || list.length === 0) return;
+
+  // Don't re-apply if already applied
+  if (answerBody.querySelector('mark.highlight')) return;
+
+  // Apply in reverse offset order (bottom-to-top) so earlier offsets are never affected
+  const sortedList = [...list].sort((a, b) => (b.offsetHint || 0) - (a.offsetHint || 0));
+
+  sortedList.forEach(hl => {
+    if (!hl.text) return;
+
+    const walker = document.createTreeWalker(answerBody, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (node.parentElement && node.parentElement.closest('.katex')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
+    // Build character map of text nodes
+    const textNodes = [];
+    let fullText = '';
+    let currentNode = walker.nextNode();
+    while (currentNode) {
+      textNodes.push({ node: currentNode, start: fullText.length, end: fullText.length + currentNode.length });
+      fullText += currentNode.nodeValue;
+      currentNode = walker.nextNode();
+    }
+
+    // Find matching position using context and offset hint
+    let matchIdx = -1;
+    if (hl.prefix && fullText.includes(hl.prefix + hl.text)) {
+      matchIdx = findBestMatchIndex(fullText, hl.prefix + hl.text, (hl.offsetHint || 0) - hl.prefix.length);
+      if (matchIdx !== -1) matchIdx += hl.prefix.length;
+    } else if (fullText.includes(hl.text)) {
+      matchIdx = findBestMatchIndex(fullText, hl.text, hl.offsetHint);
+    }
+
+    if (matchIdx === -1) return; // skip silently if quote cannot be located
+
+    const matchEnd = matchIdx + hl.text.length;
+
+    // Find starting and ending text nodes
+    const startNodeItem = textNodes.find(item => matchIdx >= item.start && matchIdx < item.end);
+    const endNodeItem = textNodes.find(item => matchEnd > item.start && matchEnd <= item.end);
+
+    if (startNodeItem && endNodeItem) {
+      const range = document.createRange();
+      range.setStart(startNodeItem.node, matchIdx - startNodeItem.start);
+      range.setEnd(endNodeItem.node, matchEnd - endNodeItem.start);
+      wrapRangeInHighlight(range, hl.color, hl.id);
+    }
+  });
+}
+
+function findBestMatchIndex(fullText, query, offsetHint) {
+  if (!query || !fullText) return -1;
+  let bestIdx = -1;
+  let minDiff = Infinity;
+  let pos = fullText.indexOf(query);
+  while (pos !== -1) {
+    const diff = offsetHint !== undefined ? Math.abs(pos - offsetHint) : pos;
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestIdx = pos;
+    }
+    pos = fullText.indexOf(query, pos + 1);
+  }
+  return bestIdx;
+}
+
+function getCharacterOffsetWithin(targetNode, offsetInNode, container) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let total = 0;
+  let currentNode = walker.nextNode();
+  while (currentNode) {
+    if (currentNode === targetNode) {
+      return total + offsetInNode;
+    }
+    total += currentNode.length;
+    currentNode = walker.nextNode();
+  }
+  return total;
+}
+
+// ==========================================================================
+// 2. Offline KaTeX Math Rendering with Fallback
+// ==========================================================================
+function applyMathInContainer(container) {
   if (!container) return;
 
-  // 1. If KaTeX is available in window, use KaTeX's official auto-render
   if (window.renderMathInElement) {
     try {
       window.renderMathInElement(container, {
@@ -498,15 +1264,15 @@ function applyMathFormatting(container) {
       });
       return;
     } catch (e) {
-      console.warn("KaTeX render failed, using fallback:", e);
+      console.warn("KaTeX error, using fallback math parser:", e);
     }
   }
 
-  // 2. Offline Fallback: Parse and format LaTeX math into clean HTML
-  formatMathFallback(container);
+  // Graceful Offline Fallback Parser
+  renderMathFallback(container);
 }
 
-function formatMathFallback(container) {
+function renderMathFallback(container) {
   const answerBodies = container.querySelectorAll('.answer-body, .formula-block, .definition-box');
   answerBodies.forEach(body => {
     body.innerHTML = parseMathText(body.innerHTML);
@@ -516,14 +1282,11 @@ function formatMathFallback(container) {
 function parseMathText(html) {
   if (!html) return '';
 
-  // Process Display Math ($$ ... $$)
   html = html.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
     return `<div class="math-display">${cleanLatexFormula(formula)}</div>`;
   });
 
-  // Process Inline Math ($ ... $) - Avoid currency like &#36;100
   html = html.replace(/\$([^\$\n\r<]+?)\$/g, (match, formula) => {
-    // If it looks like a hex address, render as code
     if (/^0x[0-9a-fA-F_]+$/.test(formula.trim())) {
       return `<code>${formula.trim()}</code>`;
     }
@@ -535,12 +1298,6 @@ function parseMathText(html) {
 
 function cleanLatexFormula(tex) {
   let s = tex.trim();
-
-  // Fix known corruptions
-  s = s.replace(/\\?u0007lpha/g, '\\alpha');
-  s = s.replace(/\blpha\b/g, '\\alpha');
-  s = s.replace(/\\?u0007pprox/g, '\\approx');
-  s = s.replace(/\\?u0007/g, '');
 
   // Greek letters
   s = s.replace(/\\alpha\b/g, '&alpha;');
@@ -557,7 +1314,7 @@ function cleanLatexFormula(tex) {
   s = s.replace(/\\omega\b/g, '&omega;');
   s = s.replace(/\\Omega\b/g, '&Omega;');
 
-  // Math operators & relations
+  // Math operators
   s = s.replace(/\\cdot\b/g, '&sdot;');
   s = s.replace(/\\times\b/g, '&times;');
   s = s.replace(/\\approx\b/g, '&asymp;');
@@ -587,7 +1344,7 @@ function cleanLatexFormula(tex) {
   s = s.replace(/_\{([^{}]+)\}/g, '<sub>$1</sub>');
   s = s.replace(/_([0-9a-zA-Z\+\-]+)/g, '<sub>$1</sub>');
 
-  // Balanced fraction parser for nested expressions
+  // Fractions: balanced parser
   while (s.includes('\\frac{')) {
     const startIdx = s.indexOf('\\frac{');
     let i = startIdx + 6;
@@ -615,199 +1372,28 @@ function cleanLatexFormula(tex) {
     s = s.substring(0, startIdx) + replacement + s.substring(i);
   }
 
-  // Square root: \sqrt{x}
   s = s.replace(/\\sqrt\{([^{}]+)\}/g, '&radic;($1)');
-
-  // Spacing
   s = s.replace(/\\quad\b/g, '&emsp;');
   s = s.replace(/\\,|\\ /g, '&thinsp;');
 
-  // Standalone single letters as italic variables (only outside HTML tags)
+  // Standalone single letters as italic variables
   s = s.replace(/(^|[^a-zA-Z0-9_>])([a-zA-Z])(?=[^a-zA-Z0-9_<]|$)/g, '$1<i>$2</i>');
-
-  // Strip residual backslashes
   s = s.replace(/\\/g, '');
 
   return s;
 }
 
-// When KaTeX CDN finishes loading, re-run math rendering
-window.addEventListener('load', () => {
-  if (window.renderMathInElement && contentContainer) {
-    try {
-      window.renderMathInElement(contentContainer, {
-        delimiters: [
-          { left: '$$', right: '$$', display: true },
-          { left: '$', right: '$', display: false }
-        ],
-        throwOnError: false,
-        ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"]
-      });
-    } catch (e) {}
-  }
-});
-
-// Helper: Wrap tables in horizontally scrollable container if not already wrapped
-function wrapTablesInContainer(html) {
-  return html.replace(/<table class="comparison-table">([\s\S]*?)<\/table>/gi, (match) => {
-    return `<div class="table-wrapper">${match}</div>`;
-  });
-}
-
-// Render colored tags
-function renderTags(tags, isCompleted) {
-  let html = '';
-  if (isCompleted) {
-    html += `<span class="badge badge-completed" title="Completed">&#10003; Completed</span> `;
-  }
-
-  html += tags.map(tag => {
-    const lower = tag.toLowerCase().trim();
-    if (lower.startsWith('x')) {
-      const freq = parseInt(lower.slice(1)) || 1;
-      let badgeClass = 'badge-pyq-low';
-      if (freq >= 5) badgeClass = 'badge-pyq-high';
-      else if (freq >= 2) badgeClass = 'badge-pyq-med';
-      return `<span class="badge ${badgeClass}" title="Appeared ${freq} times in past papers">&#128293; ${escapeHtml(tag)}</span>`;
-    } else if (lower.includes('musa')) {
-      return `<span class="badge badge-musa" title="Musa Question Bank Reference">&#128214; ${escapeHtml(tag)}</span>`;
-    } else if (lower.includes('syllabus')) {
-      return `<span class="badge badge-syllabus" title="Syllabus Only Topic">&#128203; Syllabus</span>`;
-    } else {
-      return `<span class="badge badge-pyq-low">${escapeHtml(tag)}</span>`;
-    }
-  }).join(' ');
-
-  return html;
-}
-
-// Filter matching logic
-function matchesFilter(q) {
-  if (currentFilter === 'all') return true;
-
-  if (currentFilter === 'starred') {
-    return starredQuestions.has(q.id);
-  }
-  if (currentFilter === 'completed') {
-    return completedQuestions.has(q.id);
-  }
-  if (currentFilter === 'uncompleted') {
-    return !completedQuestions.has(q.id);
-  }
-
-  const tags = (q.tags || []).map(t => t.toLowerCase());
-
-  if (currentFilter === 'high-pyq') {
-    return tags.some(t => {
-      const m = t.match(/x(\d+)/i);
-      return m && parseInt(m[1]) >= 3;
-    });
-  }
-  if (currentFilter === 'musa') {
-    return tags.some(t => t.includes('musa'));
-  }
-  if (currentFilter === 'syllabus') {
-    return tags.some(t => t.includes('syllabus'));
-  }
-  return true;
-}
-
-// Accordion toggle
-window.toggleQuestion = function(cardId) {
-  const card = document.getElementById(cardId);
-  if (!card) return;
-  card.classList.toggle('open');
-};
-
-function setupAccordionClicks() {
-  // Accordions are handled directly via onclick for instant response
-}
-
-// Expand all questions in current view
-function expandAllCurrent() {
-  document.querySelectorAll('.question-card').forEach(card => {
-    card.classList.add('open');
-  });
-}
-
-// Collapse all questions in current view
-function collapseAllCurrent() {
-  document.querySelectorAll('.question-card').forEach(card => {
-    card.classList.remove('open');
-  });
-}
-
-// Setup Event Listeners
-function setupEventListeners() {
-  if (expandAllBtn) expandAllBtn.addEventListener('click', expandAllCurrent);
-  if (collapseAllBtn) collapseAllBtn.addEventListener('click', collapseAllCurrent);
-
-  // Filter Chips
-  filterChips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      filterChips.forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      currentFilter = chip.dataset.filter;
-      renderCurrentModule();
-    });
-  });
-
-  // Search Input
-  if (searchInput) {
-    searchInput.addEventListener('input', handleSearch);
-    searchInput.addEventListener('focus', () => {
-      if (searchInput.value.trim().length >= 2) {
-        if (searchDropdown) searchDropdown.classList.add('active');
-      }
-    });
-    document.addEventListener('click', (e) => {
-      if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
-        if (searchDropdown) searchDropdown.classList.remove('active');
-      }
-    });
-  }
-
-  // Mobile Menu
-  if (mobileMenuBtn) {
-    mobileMenuBtn.addEventListener('click', () => {
-      sidebar.classList.toggle('open');
-      sidebarOverlay.classList.toggle('open');
-    });
-  }
-
-  if (sidebarOverlay) {
-    sidebarOverlay.addEventListener('click', closeMobileSidebar);
-  }
-
-  // Back to Top Button
-  window.addEventListener('scroll', () => {
-    if (window.scrollY > 300) {
-      backToTopBtn.classList.add('visible');
-    } else {
-      backToTopBtn.classList.remove('visible');
-    }
-  });
-
-  if (backToTopBtn) {
-    backToTopBtn.addEventListener('click', () => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-  }
-}
-
-function closeMobileSidebar() {
-  if (sidebar) sidebar.classList.remove('open');
-  if (sidebarOverlay) sidebarOverlay.classList.remove('open');
-}
-
-// Real-Time Search Handler
+// ==========================================================================
+// 6. Search Engine with Hotkeys & Keyboard Navigation
+// ==========================================================================
 function handleSearch(e) {
   const query = e.target.value.trim().toLowerCase();
   searchQuery = query;
+  selectedSearchIndex = -1;
 
   if (query.length < 2) {
     if (searchDropdown) searchDropdown.classList.remove('active');
-    if (searchCount) searchCount.textContent = '';
+    searchResultsList = [];
     return;
   }
 
@@ -832,21 +1418,17 @@ function handleSearch(e) {
     });
   });
 
-  if (searchCount) {
-    searchCount.textContent = `${results.length} found`;
-  }
-
-  renderSearchResults(results);
+  searchResultsList = results;
+  renderSearchResults(results, query);
 }
 
-// Render Search Results Dropdown
-function renderSearchResults(results) {
+function renderSearchResults(results, query) {
   if (!searchDropdown) return;
 
   if (results.length === 0) {
     searchDropdown.innerHTML = `
-      <div style="padding: 16px; text-align:center; color:var(--text-muted); font-size:13px;">
-        No questions matched your search query.
+      <div style="padding: 14px; text-align:center; color:var(--text-muted); font-size:12.5px;">
+        No questions matched "${escapeHtml(query)}"
       </div>
     `;
     searchDropdown.classList.add('active');
@@ -854,68 +1436,164 @@ function renderSearchResults(results) {
   }
 
   let html = '';
-  results.slice(0, 15).forEach(res => {
+  results.slice(0, 12).forEach((res, index) => {
+    // Highlight matched query in question text
+    const highlightedQ = highlightMatch(res.question, query);
     html += `
-      <div class="search-result-item" onclick="navigateToQuestion(${res.modId}, '${res.qId}')">
+      <div class="search-result-item" role="option" data-index="${index}" onclick="navigateToQuestion(${res.modId}, '${res.qId}')">
         <div class="search-result-mod">Module ${res.modId} &bull; ${escapeHtml(res.matchType)}</div>
-        <div class="search-result-q"><strong>Q${res.qId}:</strong> ${escapeHtml(res.question)}</div>
+        <div class="search-result-q"><strong>Q${res.qId}:</strong> ${highlightedQ}</div>
       </div>
     `;
   });
-
-  if (results.length > 15) {
-    html += `
-      <div style="padding: 8px 16px; font-size: 11.5px; text-align: center; color: var(--text-muted); background: var(--bg-primary);">
-        Showing 15 of ${results.length} results. Refine search for more.
-      </div>
-    `;
-  }
 
   searchDropdown.innerHTML = html;
   searchDropdown.classList.add('active');
 }
 
-// Navigate directly to question from search result
+function highlightMatch(text, query) {
+  if (!query) return escapeHtml(text);
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return escapeHtml(text).replace(regex, '<mark class="search-match">$1</mark>');
+}
+
 window.navigateToQuestion = function(modId, qId) {
   if (searchDropdown) searchDropdown.classList.remove('active');
+  if (searchInput) searchInput.blur();
+
+  // Reset filter to 'all' so searched card is always visible
+  const filterChanged = currentFilter !== 'all';
+  if (filterChanged) {
+    currentFilter = 'all';
+    filterChips.forEach(c => {
+      const isAll = c.dataset.filter === 'all';
+      c.classList.toggle('active', isAll);
+      c.setAttribute('aria-pressed', String(isAll));
+    });
+  }
+
   if (currentModuleId !== modId) {
     switchModule(modId);
+  } else if (filterChanged) {
+    renderCurrentModule();
   }
 
   setTimeout(() => {
-    const safeId = `q-${qId.replace(/\./g, '-')}`;
-    const card = document.getElementById(safeId);
+    const cardId = 'q-' + qId.replace(/\./g, '-');
+    const card = document.getElementById(cardId);
     if (card) {
-      card.classList.add('open');
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      card.style.outline = '2px solid var(--primary-accent)';
-      setTimeout(() => card.style.outline = 'none', 2000);
+      if (!card.classList.contains('open')) {
+        toggleQuestion(cardId);
+      }
+      // Scroll into view below sticky header
+      const topOffset = card.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top: topOffset, behavior: 'smooth' });
+
+      // Flash highlight
+      card.classList.add('flash-highlight');
+      setTimeout(() => card.classList.remove('flash-highlight'), 1200);
     }
-  }, 100);
+  }, 120);
 };
 
-// Copy code button helper
+// ==========================================================================
+// Export / Import (Backup & Restore)
+// ==========================================================================
+function setupBackupHandlers() {
+  if (btnExportImport) {
+    btnExportImport.addEventListener('click', () => {
+      if (backupModal) backupModal.classList.add('active');
+    });
+  }
+
+  if (btnCloseModal) {
+    btnCloseModal.addEventListener('click', () => {
+      if (backupModal) backupModal.classList.remove('active');
+    });
+  }
+
+  if (btnDoExport) {
+    btnDoExport.addEventListener('click', () => {
+      const exportData = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        starredQuestions: Array.from(starredQuestions),
+        completedQuestions: Array.from(completedQuestions),
+        starredModules: Array.from(starredModules),
+        highlights: questionHighlights
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `embedded-systems-study-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  if (importFileInput) {
+    importFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const imported = JSON.parse(event.target.result);
+          if (Array.isArray(imported.starredQuestions)) {
+            starredQuestions = new Set(imported.starredQuestions);
+          }
+          if (Array.isArray(imported.completedQuestions)) {
+            completedQuestions = new Set(imported.completedQuestions);
+          }
+          if (Array.isArray(imported.starredModules)) {
+            starredModules = new Set(imported.starredModules);
+          }
+          if (imported.highlights && typeof imported.highlights === 'object') {
+            questionHighlights = imported.highlights;
+          }
+          saveUserData();
+          computeGlobalStats();
+          renderSidebar();
+          renderCurrentModule();
+          if (backupModal) backupModal.classList.remove('active');
+          alert('Study progress and highlights imported successfully!');
+        } catch (err) {
+          alert('Invalid backup file. Please select a valid JSON backup.');
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+}
+
+// ==========================================================================
+// Code Copy Button
+// ==========================================================================
 function setupCodeCopyButtons() {
   document.querySelectorAll('pre').forEach(pre => {
     if (pre.querySelector('.code-copy-btn')) return;
 
     pre.style.position = 'relative';
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'code-copy-btn';
     btn.textContent = 'Copy';
+    btn.setAttribute('aria-label', 'Copy code snippet');
     btn.style.cssText = `
       position: absolute;
-      top: 8px;
-      right: 8px;
-      padding: 3px 8px;
+      top: 6px;
+      right: 6px;
+      padding: 2px 7px;
       font-size: 11px;
-      font-weight: 600;
-      color: #94A3B8;
-      background: rgba(255,255,255,0.1);
+      font-family: var(--font-mono);
+      color: var(--text-code);
+      background: rgba(255,255,255,0.12);
       border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 4px;
+      border-radius: 3px;
       cursor: pointer;
-      transition: all 0.15s ease;
     `;
 
     btn.addEventListener('click', () => {
@@ -925,13 +1603,161 @@ function setupCodeCopyButtons() {
         btn.style.color = '#34D399';
         setTimeout(() => {
           btn.textContent = 'Copy';
-          btn.style.color = '#94A3B8';
-        }, 2000);
+          btn.style.color = 'var(--text-code)';
+        }, 1800);
       });
     });
 
     pre.appendChild(btn);
   });
+}
+
+// ==========================================================================
+// Global Event Listeners (Hotkeys, Drawer, Controls)
+// ==========================================================================
+function setupEventListeners() {
+  initHighlightListeners();
+  setupBackupHandlers();
+
+  // Theme toggle
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', toggleTheme);
+  }
+
+  // Expand / Collapse all
+  if (expandAllBtn) expandAllBtn.addEventListener('click', expandAllCurrent);
+  if (collapseAllBtn) collapseAllBtn.addEventListener('click', collapseAllCurrent);
+
+  // Filter chips
+  filterChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      filterChips.forEach(c => {
+        c.classList.remove('active');
+        c.setAttribute('aria-pressed', 'false');
+      });
+      chip.classList.add('active');
+      chip.setAttribute('aria-pressed', 'true');
+      currentFilter = chip.dataset.filter;
+      renderCurrentModule();
+    });
+  });
+
+  // Search input listeners & keyboard navigation
+  if (searchInput) {
+    searchInput.addEventListener('input', handleSearch);
+    searchInput.addEventListener('focus', () => {
+      if (searchInput.value.trim().length >= 2 && searchDropdown) {
+        searchDropdown.classList.add('active');
+      }
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (!searchDropdown || !searchDropdown.classList.contains('active')) return;
+      const items = searchDropdown.querySelectorAll('.search-result-item');
+      if (items.length === 0) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedSearchIndex = (selectedSearchIndex + 1) % items.length;
+        updateSelectedSearchItem(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedSearchIndex = (selectedSearchIndex - 1 + items.length) % items.length;
+        updateSelectedSearchItem(items);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (selectedSearchIndex >= 0 && selectedSearchIndex < items.length) {
+          items[selectedSearchIndex].click();
+        } else if (items.length > 0) {
+          items[0].click();
+        }
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
+        searchDropdown.classList.remove('active');
+      }
+    });
+  }
+
+  function updateSelectedSearchItem(items) {
+    items.forEach((item, idx) => {
+      item.classList.toggle('selected', idx === selectedSearchIndex);
+      if (idx === selectedSearchIndex) {
+        item.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  // Global Keyboard Shortcuts ('/', Ctrl+K, Esc)
+  document.addEventListener('keydown', (e) => {
+    const isTyping = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) || document.activeElement.isContentEditable;
+
+    if (!isTyping) {
+      if (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+        e.preventDefault();
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+      }
+    }
+
+    if (e.key === 'Escape') {
+      if (searchDropdown && searchDropdown.classList.contains('active')) {
+        searchDropdown.classList.remove('active');
+      }
+      if (searchInput && document.activeElement === searchInput) {
+        searchInput.value = '';
+        searchInput.blur();
+      }
+      if (sidebar && sidebar.classList.contains('open')) {
+        closeMobileSidebar();
+      }
+    }
+  });
+
+  // Mobile Drawer Toggle with focus management
+  if (mobileMenuBtn) {
+    mobileMenuBtn.addEventListener('click', () => {
+      const isOpen = sidebar.classList.toggle('open');
+      sidebarOverlay.classList.toggle('open');
+      mobileMenuBtn.setAttribute('aria-expanded', String(isOpen));
+      if (isOpen) {
+        const firstLink = sidebar.querySelector('.nav-item');
+        if (firstLink) firstLink.focus();
+      }
+    });
+  }
+
+  if (sidebarOverlay) {
+    sidebarOverlay.addEventListener('click', closeMobileSidebar);
+  }
+
+  // Back to Top Button
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > 280) {
+      backToTopBtn.classList.add('visible');
+    } else {
+      backToTopBtn.classList.remove('visible');
+    }
+  });
+
+  if (backToTopBtn) {
+    backToTopBtn.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+}
+
+function closeMobileSidebar() {
+  if (sidebar) sidebar.classList.remove('open');
+  if (sidebarOverlay) sidebarOverlay.classList.remove('open');
+  if (mobileMenuBtn) {
+    mobileMenuBtn.setAttribute('aria-expanded', 'false');
+    mobileMenuBtn.focus();
+  }
 }
 
 function escapeHtml(text) {

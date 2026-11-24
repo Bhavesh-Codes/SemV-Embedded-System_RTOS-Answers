@@ -14,26 +14,41 @@ All answers have been compiled and verified directly from the teacher's lecture 
 
 ---
 
-## 🎨 Design & Aesthetic Features
+## 🎨 Technical Datasheet Design System & Features
 
-- **Minimal Academic Dashboard:** Soft pastel color palette (lavender, sky blue, mint, peach, rose, and amber).
-- **Collapsible Question Cards:** Each question is housed in an accordion card displaying:
-  - Exact question wording
-  - PYQ frequency badge (e.g., `🔥 (x7)`, `🔥 (x3)`)
-  - Musa reference badge (e.g., `📖 musa Q.14`)
-  - Syllabus-only indicators (`📋 Syllabus`)
-- **8-Mark Exam-Ready Answers:**
-  - Clear definitions in highlighted callout boxes (`.definition-box`)
-  - Subheadings and numbered/bulleted points
-  - Responsive comparison tables with clean zebra striping
-  - Step-by-step mathematical formulas and worked numericals (`.formula-block`)
-  - Formatted assembly and C code blocks with one-click **Copy** button
-  - Technically accurate, responsive inline SVG diagrams (architecture, circuits, flowcharts, state transitions, and Gantt charts)
-- **Instant Search:** Real-time search across question text, topic headers, Musa tags, and answer content with direct jump and accordion auto-open.
-- **Filter Bar:** One-click quick filters for *All Questions (62)*, *High Frequency (≥ x3)*, *Musa PYQ List*, and *Syllabus Only*.
-- **Expand / Collapse All:** Quick controls to expand or collapse all cards in the current module view.
-- **Module Navigation:** Direct sidebar navigation, next/previous module footers, and a smooth back-to-top button.
-- **Mobile Responsive:** Adaptive layout with collapsible drawer navigation for mobile and tablet screens.
+- **Technical Datasheet Aesthetic:** Minimal, clean academic design with near-black ink typography (`#18181B`), warm technical paper background (`#F8F8F7`), and a cyan-slate accent (`#0E7490`).
+- **Dark Mode Support:** Clean obsidian/dark console theme toggle with persistent storage in `localStorage` and automatic `prefers-color-scheme` detection.
+- **In-Place Progress Toggles (Zero Reload / Zero Scroll Jump):**
+  - **Star Question / Module:** Bookmark questions and entire modules with in-place DOM updates (no page re-renders, no scroll jumps, open accordions remain open).
+  - **Mark Question / Module Completed:** Check off completed questions with live progress bars updating dynamically in the sidebar and module headers.
+  - **Smart Filtering:** Toggling a card while a filter is active keeps it visible in a dimmed state (`.is-filter-dimmed`) until filters or modules are switched.
+- **Persistent Text Highlighting Engine:**
+  - Select text inside any answer body on desktop or touch devices to reveal a floating toolbar with 4 colors (Yellow, Green, Pink, Blue) and Remove.
+  - Wraps text across multiple paragraphs, lists, bold text, code, and tables using a non-destructive `TreeWalker` text node slicer.
+  - Highlights are saved per question in `localStorage` using quote text, character offset hints, and 30-character prefix/suffix context anchors.
+  - Ignores KaTeX math nodes to prevent formula corruption.
+  - Click existing highlights to change color or remove them; new highlights automatically replace overlapping ones.
+  - Per-question "Clear highlights" button with confirmation and a header highlight count badge (`🖍`).
+- **100% Offline KaTeX Math Rendering:**
+  - Fully bundled locally under `assets/vendor/katex/` (CSS, JS, auto-render, and local `.woff2` fonts).
+  - Zero external CDN requests or internet connectivity required.
+  - Includes a resilient pure-JavaScript/CSS offline math fallback parser if KaTeX is unavailable.
+- **Technical Typography & Type Scale:**
+  - **Question Titles:** Source Serif 4 (~19px desktop / 17px mobile), 500-600 weight.
+  - **Answer Text:** IBM Plex Sans at 16px with line-height ~1.7, capped at `~70ch` for optimal reading comfort.
+  - **Code & Formulas:** IBM Plex Mono with copy-to-clipboard support.
+  - All fonts bundled locally as `.woff2` in `assets/fonts/` with system fallbacks.
+- **Instant Search & Keyboard Shortcuts:**
+  - Press `/` or `Ctrl+K` (`Cmd+K` on Mac) to focus search; `Esc` clears and unfocuses.
+  - Live search across question text, topics, Musa IDs, and answer content with highlighted match terms.
+  - Keyboard navigation (`ArrowDown`, `ArrowUp`, `Enter`) selects and jumps directly to questions.
+  - Target questions are automatically expanded, smoothly scrolled below the sticky header, and flashed with an accent outline.
+- **Study Backup & Restore (JSON):**
+  - One-click Export / Import modal to backup all your starred bookmarks, completed ticks, and text highlights as a portable JSON file.
+- **Print Optimization (`@media print`):**
+  - Auto-expands all answers, hides navigation chrome and toolbars, avoids page breaks inside diagrams/tables/code/equations, and preserves text highlights.
+- **WCAG AA Accessibility:**
+  - 4.5:1 text contrast on all badges and labels, `:focus-visible` keyboard rings, skip-to-content link, `aria-expanded`, `aria-controls`, and `role="progressbar"`.
 
 ---
 
@@ -142,10 +157,15 @@ Embedded-Systems-Study-Guide/
 ├── README.md                     # Comprehensive documentation & syllabus guide
 ├── assets/
 │   ├── css/
-│   │   └── style.css             # Modern pastel design, responsive typography & layout
-│   └── js/
-│       ├── app.js                # Search, filtering, navigation & accordion controls
-│       └── data.js               # Pre-bundled JSON data for zero-CORS file:// execution
+│   │   └── style.css             # Technical datasheet design system, themes & print rules
+│   ├── fonts/
+│   │   ├── fonts.css             # Local @font-face declarations
+│   │   └── *.woff2               # Local Source Serif 4, IBM Plex Sans & Mono fonts
+│   ├── js/
+│   │   ├── app.js                # Core app engine: in-place toggles, highlights, search, hotkeys
+│   │   └── data.js               # Pre-bundled JSON data for zero-CORS file:// execution
+│   └── vendor/
+│       └── katex/                # 100% Offline KaTeX bundle (CSS, JS, auto-render & fonts)
 └── data/
     ├── mod1_answers.json         # Module 1 answers (70.9 KB)
     ├── mod2_answers.json         # Module 2 answers (165.4 KB)
