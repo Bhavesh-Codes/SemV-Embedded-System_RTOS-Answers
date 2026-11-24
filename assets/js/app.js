@@ -1,12 +1,24 @@
 /**
  * Embedded Systems & RTOS Study Guide - Interactive Dashboard App
+ * Features:
+ * - Direct-open zero-CORS file:// support
+ * - LaTeX math rendering with KaTeX and built-in offline mathematical typography fallback
+ * - Star (Bookmark) and Tick (Completed / Studied) options for all questions & modules
+ * - LocalStorage persistence
+ * - Real-time full-text search & quick filters
+ * - Accordion controls, code copying, and mobile drawer
  */
 
 // Global State
 let studyData = [];
 let currentModuleId = 1;
-let currentFilter = 'all'; // 'all', 'high-pyq', 'musa', 'syllabus'
+let currentFilter = 'all'; // 'all', 'starred', 'completed', 'uncompleted', 'high-pyq', 'musa', 'syllabus'
 let searchQuery = '';
+
+// User Progress & Bookmarks (with LocalStorage persistence)
+let starredQuestions = new Set();
+let completedQuestions = new Set();
+let starredModules = new Set();
 
 // DOM Elements
 const sidebarNav = document.getElementById('sidebar-nav');
@@ -24,12 +36,40 @@ const collapseAllBtn = document.getElementById('btn-collapse-all');
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
+  loadSavedUserData();
   setupEventListeners();
   await loadAllModuleData();
   renderSidebar();
   renderCurrentModule();
   setupCodeCopyButtons();
+  updateGlobalStats();
 });
+
+// Load user bookmarks & completion state from localStorage
+function loadSavedUserData() {
+  try {
+    const savedStars = localStorage.getItem('es_starred_questions');
+    if (savedStars) starredQuestions = new Set(JSON.parse(savedStars));
+
+    const savedCompleted = localStorage.getItem('es_completed_questions');
+    if (savedCompleted) completedQuestions = new Set(JSON.parse(savedCompleted));
+
+    const savedModStars = localStorage.getItem('es_starred_modules');
+    if (savedModStars) starredModules = new Set(JSON.parse(savedModStars));
+  } catch (e) {
+    console.warn('LocalStorage not available, falling back to session memory.', e);
+  }
+}
+
+function saveUserData() {
+  try {
+    localStorage.setItem('es_starred_questions', JSON.stringify(Array.from(starredQuestions)));
+    localStorage.setItem('es_completed_questions', JSON.stringify(Array.from(completedQuestions)));
+    localStorage.setItem('es_starred_modules', JSON.stringify(Array.from(starredModules)));
+  } catch (e) {
+    // Session fallback
+  }
+}
 
 // Load data for all modules
 async function loadAllModuleData() {
@@ -38,7 +78,6 @@ async function loadAllModuleData() {
 
   for (const modNum of modulesToLoad) {
     try {
-      // Check if data is already provided via window.embeddedStudyData
       if (window.embeddedStudyData && window.embeddedStudyData[modNum]) {
         studyData.push(window.embeddedStudyData[modNum]);
         continue;
@@ -48,33 +87,31 @@ async function loadAllModuleData() {
       if (response.ok) {
         const json = await response.json();
         studyData.push(json);
-      } else {
-        console.warn(`Could not load mod${modNum}_answers.json`);
       }
     } catch (e) {
-      // If running directly from file:// and fetch is blocked, check window variable
       if (window.embeddedStudyData && window.embeddedStudyData[modNum]) {
         studyData.push(window.embeddedStudyData[modNum]);
-      } else {
-        console.warn(`Error loading module ${modNum}:`, e);
       }
     }
   }
 
-  // Sort modules in numerical order
   studyData.sort((a, b) => a.module - b.module);
-  updateGlobalStats();
 }
 
-// Update total questions count in sidebar footer
+// Update sidebar stats & overall progress bar
 function updateGlobalStats() {
   let totalQuestions = 0;
+  let completedCount = 0;
+  let starredCount = 0;
   let pyqHighCount = 0;
 
   studyData.forEach(mod => {
     (mod.topics || []).forEach(t => {
       (t.questions || []).forEach(q => {
         totalQuestions++;
+        if (completedQuestions.has(q.id)) completedCount++;
+        if (starredQuestions.has(q.id)) starredCount++;
+
         const isHigh = (q.tags || []).some(tag => {
           const m = tag.match(/x(\d+)/i);
           return m && parseInt(m[1]) >= 3;
@@ -84,11 +121,33 @@ function updateGlobalStats() {
     });
   });
 
+  // Sidebar header stats
   const totalElem = document.getElementById('total-questions-count');
   if (totalElem) totalElem.textContent = `${totalQuestions} Questions`;
   
   const highElem = document.getElementById('high-freq-count');
   if (highElem) highElem.textContent = `${pyqHighCount} High-Yield`;
+
+  // Syllabus progress widget
+  const pct = totalQuestions > 0 ? Math.round((completedCount / totalQuestions) * 100) : 0;
+  const pctElem = document.getElementById('syllabus-progress-pct');
+  if (pctElem) pctElem.textContent = `${pct}%`;
+
+  const compElem = document.getElementById('syllabus-completed-count');
+  if (compElem) compElem.textContent = completedCount;
+
+  const starElem = document.getElementById('syllabus-starred-count');
+  if (starElem) starElem.textContent = starredCount;
+
+  const barElem = document.getElementById('syllabus-progress-bar');
+  if (barElem) barElem.style.width = `${pct}%`;
+
+  // Filter chips count
+  const filterStarCount = document.getElementById('filter-starred-count');
+  if (filterStarCount) filterStarCount.textContent = starredCount;
+
+  const filterCompCount = document.getElementById('filter-completed-count');
+  if (filterCompCount) filterCompCount.textContent = completedCount;
 }
 
 // Render Left Sidebar Navigation
@@ -103,7 +162,18 @@ function renderSidebar() {
 
   studyData.forEach(mod => {
     let qCount = 0;
-    (mod.topics || []).forEach(t => qCount += (t.questions || []).length);
+    let completedInMod = 0;
+    let hasStarInMod = starredModules.has(mod.module);
+
+    (mod.topics || []).forEach(t => {
+      (t.questions || []).forEach(q => {
+        qCount++;
+        if (completedQuestions.has(q.id)) completedInMod++;
+        if (starredQuestions.has(q.id)) hasStarInMod = true;
+      });
+    });
+
+    const isAllCompleted = qCount > 0 && completedInMod === qCount;
 
     const a = document.createElement('a');
     a.className = `nav-item ${mod.module === currentModuleId ? 'active' : ''}`;
@@ -111,10 +181,13 @@ function renderSidebar() {
     a.href = `#module-${mod.module}`;
 
     a.innerHTML = `
-      <span class="nav-item-title">Mod ${mod.module}: ${escapeHtml(mod.title.split('&')[0].trim())}</span>
-      <span class="nav-item-meta">
-        <span class="nav-badge">${qCount} Qs</span>
-      </span>
+      <div class="nav-item-title-wrapper">
+        ${hasStarInMod ? `<span class="nav-star-indicator" title="Contains starred questions">&#11088;</span>` : ''}
+        <span>Mod ${mod.module}: ${escapeHtml(mod.title.split('&')[0].trim())}</span>
+      </div>
+      <div class="nav-item-meta">
+        ${isAllCompleted ? `<span class="nav-completed-badge" title="All completed">&#10003; Done</span>` : `<span class="nav-badge">${completedInMod}/${qCount}</span>`}
+      </div>
     `;
 
     a.addEventListener('click', (e) => {
@@ -131,7 +204,6 @@ function renderSidebar() {
 function switchModule(modId) {
   currentModuleId = parseInt(modId);
 
-  // Update active state in sidebar
   document.querySelectorAll('.nav-item').forEach(el => {
     if (parseInt(el.dataset.modId) === currentModuleId) {
       el.classList.add('active');
@@ -160,46 +232,69 @@ function renderCurrentModule() {
 
   // Calculate module statistics
   let totalModQuestions = 0;
-  let pyqSum = 0;
+  let completedModQuestions = 0;
+  let starredModQuestions = 0;
   let musaCount = 0;
 
   (mod.topics || []).forEach(t => {
     (t.questions || []).forEach(q => {
       totalModQuestions++;
+      if (completedQuestions.has(q.id)) completedModQuestions++;
+      if (starredQuestions.has(q.id)) starredModQuestions++;
       (q.tags || []).forEach(tag => {
-        const m = tag.match(/x(\d+)/i);
-        if (m) pyqSum += parseInt(m[1]);
         if (tag.toLowerCase().includes('musa')) musaCount++;
       });
     });
   });
 
+  const modProgressPct = totalModQuestions > 0 ? Math.round((completedModQuestions / totalModQuestions) * 100) : 0;
+  const isModStarred = starredModules.has(mod.module);
+  const isModAllCompleted = totalModQuestions > 0 && completedModQuestions === totalModQuestions;
+
   let html = `
     <div class="module-section active" id="module-${mod.module}">
+      <!-- Module Hero Header -->
       <div class="module-hero">
-        <div>
-          <div class="module-number">Module ${mod.module} &bull; University Exam Guide</div>
-          <h1 class="module-title">${escapeHtml(mod.title)}</h1>
-        </div>
-        <div class="module-stats">
-          <div class="stat-pill">
-            <div class="stat-value">${totalModQuestions}</div>
-            <div class="stat-label">Total Questions</div>
+        <div class="module-hero-top">
+          <div>
+            <div class="module-number">Module ${mod.module} &bull; University Exam Guide</div>
+            <h1 class="module-title">${escapeHtml(mod.title)}</h1>
           </div>
-          <div class="stat-pill">
-            <div class="stat-value">${musaCount}</div>
-            <div class="stat-label">Musa Reference</div>
+          
+          <!-- Module Level Quick Actions -->
+          <div class="module-actions">
+            <button class="btn-module-action ${isModStarred ? 'starred' : ''}" onclick="toggleStarModule(${mod.module}, event)" title="Star entire module">
+              <span>${isModStarred ? '&#11088; Starred' : '&#9734; Star Module'}</span>
+            </button>
+            <button class="btn-module-action ${isModAllCompleted ? 'completed' : ''}" onclick="toggleCompleteAllModule(${mod.module}, event)" title="${isModAllCompleted ? 'Mark all uncompleted' : 'Mark all completed'}">
+              <span>${isModAllCompleted ? '&#10003; All Completed' : '&#9744; Mark All Done'}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Module Progress Bar -->
+        <div class="module-progress-wrapper">
+          <div class="progress-info">
+            <span>Module Completion Progress</span>
+            <span><strong>${completedModQuestions}</strong> of ${totalModQuestions} completed (${modProgressPct}%)</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-bar-fill" style="width: ${modProgressPct}%;"></div>
           </div>
         </div>
       </div>
   `;
 
   // Render Topics and Questions
+  let totalRenderedInMod = 0;
+
   (mod.topics || []).forEach(topic => {
     const filteredQuestions = (topic.questions || []).filter(q => matchesFilter(q));
     if (filteredQuestions.length === 0 && currentFilter !== 'all') {
-      return; // Skip empty topic when filtering
+      return;
     }
+
+    totalRenderedInMod += filteredQuestions.length;
 
     html += `
       <div class="topic-group" id="topic-${topic.id.replace('.', '-')}">
@@ -223,6 +318,15 @@ function renderCurrentModule() {
     `;
   });
 
+  if (totalRenderedInMod === 0) {
+    html += `
+      <div style="text-align:center; padding: 48px 20px; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); margin: 20px 0;">
+        <h3 style="font-size:16px; color:var(--text-main); margin-bottom:6px;">No questions match filter: "${escapeHtml(currentFilter)}"</h3>
+        <p style="font-size:13px; color:var(--text-muted);">Try selecting "All Questions" from the filter bar above.</p>
+      </div>
+    `;
+  }
+
   // Module Navigation Footer (Prev / Next)
   const prevMod = studyData.find(m => m.module === currentModuleId - 1);
   const nextMod = studyData.find(m => m.module === currentModuleId + 1);
@@ -245,22 +349,47 @@ function renderCurrentModule() {
   </div>`;
 
   contentContainer.innerHTML = html;
+  
+  // Format math and setup interactions
+  applyMathFormatting(contentContainer);
   setupAccordionClicks();
   setupCodeCopyButtons();
 }
 
 // Render individual question card
 function renderQuestionCard(q, topicId) {
-  const tagsHtml = renderTags(q.tags || []);
+  const isStarred = starredQuestions.has(q.id);
+  const isCompleted = completedQuestions.has(q.id);
+  const tagsHtml = renderTags(q.tags || [], isCompleted);
   const safeId = `q-${q.id.replace(/\./g, '-')}`;
 
   return `
-    <div class="question-card" id="${safeId}" data-qid="${q.id}">
+    <div class="question-card ${isStarred ? 'is-starred' : ''} ${isCompleted ? 'is-completed' : ''}" id="${safeId}" data-qid="${q.id}">
       <div class="question-header" onclick="toggleQuestion('${safeId}')">
         <div class="question-title-area">
-          <div class="question-num">Question ${q.id}</div>
+          <div class="question-actions-row">
+            <!-- Star Button -->
+            <button class="btn-q-action btn-q-star ${isStarred ? 'active' : ''}" onclick="toggleStarQuestion('${q.id}', event)" title="Star/Bookmark this question for quick revision">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="${isStarred ? '#F59E0B' : 'none'}" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+              <span>${isStarred ? 'Starred' : 'Star'}</span>
+            </button>
+
+            <!-- Tick / Completed Button -->
+            <button class="btn-q-action btn-q-tick ${isCompleted ? 'active' : ''}" onclick="toggleCompleteQuestion('${q.id}', event)" title="Mark as studied/completed">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>${isCompleted ? 'Completed' : 'Mark Done'}</span>
+            </button>
+
+            <span class="question-num">Question ${q.id}</span>
+          </div>
+
           <div class="question-text">${escapeHtml(q.question)}</div>
         </div>
+        
         <div class="question-meta">
           ${tagsHtml}
           <svg class="accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -275,6 +404,249 @@ function renderQuestionCard(q, topicId) {
   `;
 }
 
+// User Action Handlers (Star & Tick)
+window.toggleStarQuestion = function(qId, event) {
+  if (event) event.stopPropagation();
+
+  if (starredQuestions.has(qId)) {
+    starredQuestions.delete(qId);
+  } else {
+    starredQuestions.add(qId);
+  }
+
+  saveUserData();
+  updateGlobalStats();
+  renderSidebar();
+  renderCurrentModule();
+};
+
+window.toggleCompleteQuestion = function(qId, event) {
+  if (event) event.stopPropagation();
+
+  if (completedQuestions.has(qId)) {
+    completedQuestions.delete(qId);
+  } else {
+    completedQuestions.add(qId);
+  }
+
+  saveUserData();
+  updateGlobalStats();
+  renderSidebar();
+  renderCurrentModule();
+};
+
+window.toggleStarModule = function(modId, event) {
+  if (event) event.stopPropagation();
+  modId = parseInt(modId);
+
+  if (starredModules.has(modId)) {
+    starredModules.delete(modId);
+  } else {
+    starredModules.add(modId);
+  }
+
+  saveUserData();
+  renderSidebar();
+  renderCurrentModule();
+};
+
+window.toggleCompleteAllModule = function(modId, event) {
+  if (event) event.stopPropagation();
+  modId = parseInt(modId);
+
+  const mod = studyData.find(m => m.module === modId);
+  if (!mod) return;
+
+  const allQIds = [];
+  (mod.topics || []).forEach(t => {
+    (t.questions || []).forEach(q => allQIds.push(q.id));
+  });
+
+  const allDone = allQIds.every(id => completedQuestions.has(id));
+
+  allQIds.forEach(id => {
+    if (allDone) {
+      completedQuestions.delete(id);
+    } else {
+      completedQuestions.add(id);
+    }
+  });
+
+  saveUserData();
+  updateGlobalStats();
+  renderSidebar();
+  renderCurrentModule();
+};
+
+// ============================================================================
+// MATHEMATICAL TYPESETTING ENGINE (KaTeX with Full Offline Fallback)
+// ============================================================================
+
+function applyMathFormatting(container) {
+  if (!container) return;
+
+  // 1. If KaTeX is available in window, use KaTeX's official auto-render
+  if (window.renderMathInElement) {
+    try {
+      window.renderMathInElement(container, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false }
+        ],
+        throwOnError: false,
+        ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"]
+      });
+      return;
+    } catch (e) {
+      console.warn("KaTeX render failed, using fallback:", e);
+    }
+  }
+
+  // 2. Offline Fallback: Parse and format LaTeX math into clean HTML
+  formatMathFallback(container);
+}
+
+function formatMathFallback(container) {
+  const answerBodies = container.querySelectorAll('.answer-body, .formula-block, .definition-box');
+  answerBodies.forEach(body => {
+    body.innerHTML = parseMathText(body.innerHTML);
+  });
+}
+
+function parseMathText(html) {
+  if (!html) return '';
+
+  // Process Display Math ($$ ... $$)
+  html = html.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+    return `<div class="math-display">${cleanLatexFormula(formula)}</div>`;
+  });
+
+  // Process Inline Math ($ ... $) - Avoid currency like &#36;100
+  html = html.replace(/\$([^\$\n\r<]+?)\$/g, (match, formula) => {
+    // If it looks like a hex address, render as code
+    if (/^0x[0-9a-fA-F_]+$/.test(formula.trim())) {
+      return `<code>${formula.trim()}</code>`;
+    }
+    return `<span class="math-inline">${cleanLatexFormula(formula)}</span>`;
+  });
+
+  return html;
+}
+
+function cleanLatexFormula(tex) {
+  let s = tex.trim();
+
+  // Fix known corruptions
+  s = s.replace(/\\?u0007lpha/g, '\\alpha');
+  s = s.replace(/\blpha\b/g, '\\alpha');
+  s = s.replace(/\\?u0007pprox/g, '\\approx');
+  s = s.replace(/\\?u0007/g, '');
+
+  // Greek letters
+  s = s.replace(/\\alpha\b/g, '&alpha;');
+  s = s.replace(/\\beta\b/g, '&beta;');
+  s = s.replace(/\\gamma\b/g, '&gamma;');
+  s = s.replace(/\\delta\b/g, '&delta;');
+  s = s.replace(/\\Delta\b/g, '&Delta;');
+  s = s.replace(/\\epsilon\b/g, '&epsilon;');
+  s = s.replace(/\\theta\b/g, '&theta;');
+  s = s.replace(/\\lambda\b/g, '&lambda;');
+  s = s.replace(/\\mu\b/g, '&mu;');
+  s = s.replace(/\\pi\b/g, '&pi;');
+  s = s.replace(/\\tau\b/g, '&tau;');
+  s = s.replace(/\\omega\b/g, '&omega;');
+  s = s.replace(/\\Omega\b/g, '&Omega;');
+
+  // Math operators & relations
+  s = s.replace(/\\cdot\b/g, '&sdot;');
+  s = s.replace(/\\times\b/g, '&times;');
+  s = s.replace(/\\approx\b/g, '&asymp;');
+  s = s.replace(/\\pm\b/g, '&plusmn;');
+  s = s.replace(/\\le\b|\\leq\b/g, '&le;');
+  s = s.replace(/\\ge\b|\\geq\b/g, '&ge;');
+  s = s.replace(/\\neq\b/g, '&ne;');
+  s = s.replace(/\\infty\b/g, '&infin;');
+  s = s.replace(/\\sum\b/g, '&sum;');
+  s = s.replace(/\\dots\b/g, '&hellip;');
+  s = s.replace(/\\circ\b/g, '&deg;');
+
+  // Brackets
+  s = s.replace(/\\left\\lfloor\s*([\s\S]*?)\s*\\right\\rfloor/g, '&lfloor;$1&rfloor;');
+  s = s.replace(/\\left\\lceil\s*([\s\S]*?)\s*\\right\\rceil/g, '&lceil;$1&rceil;');
+  s = s.replace(/\\left\(\s*([\s\S]*?)\s*\\right\)/g, '($1)');
+  s = s.replace(/\\left\[\s*([\s\S]*?)\s*\\right\]/g, '[$1]');
+  s = s.replace(/\\left|\/right/g, '');
+
+  // Text and bold
+  s = s.replace(/\\mathbf\{([^{}]+)\}/g, '<strong>$1</strong>');
+  s = s.replace(/\\text\{([^{}]+)\}/g, '<span class="math-text">$1</span>');
+
+  // Superscripts and subscripts
+  s = s.replace(/\^\{([^{}]+)\}/g, '<sup>$1</sup>');
+  s = s.replace(/\^([0-9a-zA-Z\+\-]+)/g, '<sup>$1</sup>');
+  s = s.replace(/_\{([^{}]+)\}/g, '<sub>$1</sub>');
+  s = s.replace(/_([0-9a-zA-Z\+\-]+)/g, '<sub>$1</sub>');
+
+  // Balanced fraction parser for nested expressions
+  while (s.includes('\\frac{')) {
+    const startIdx = s.indexOf('\\frac{');
+    let i = startIdx + 6;
+    let depth = 1;
+    let numStart = i;
+    while (i < s.length && depth > 0) {
+      if (s[i] === '{') depth++;
+      else if (s[i] === '}') depth--;
+      i++;
+    }
+    if (depth !== 0) break;
+    const num = s.substring(numStart, i - 1);
+    if (s[i] !== '{') break;
+    i++;
+    let denStart = i;
+    depth = 1;
+    while (i < s.length && depth > 0) {
+      if (s[i] === '{') depth++;
+      else if (s[i] === '}') depth--;
+      i++;
+    }
+    if (depth !== 0) break;
+    const den = s.substring(denStart, i - 1);
+    const replacement = `<span class="math-frac"><span class="numerator">${cleanLatexFormula(num)}</span><span class="denominator">${cleanLatexFormula(den)}</span></span>`;
+    s = s.substring(0, startIdx) + replacement + s.substring(i);
+  }
+
+  // Square root: \sqrt{x}
+  s = s.replace(/\\sqrt\{([^{}]+)\}/g, '&radic;($1)');
+
+  // Spacing
+  s = s.replace(/\\quad\b/g, '&emsp;');
+  s = s.replace(/\\,|\\ /g, '&thinsp;');
+
+  // Standalone single letters as italic variables (only outside HTML tags)
+  s = s.replace(/(^|[^a-zA-Z0-9_>])([a-zA-Z])(?=[^a-zA-Z0-9_<]|$)/g, '$1<i>$2</i>');
+
+  // Strip residual backslashes
+  s = s.replace(/\\/g, '');
+
+  return s;
+}
+
+// When KaTeX CDN finishes loading, re-run math rendering
+window.addEventListener('load', () => {
+  if (window.renderMathInElement && contentContainer) {
+    try {
+      window.renderMathInElement(contentContainer, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false }
+        ],
+        throwOnError: false,
+        ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"]
+      });
+    } catch (e) {}
+  }
+});
+
 // Helper: Wrap tables in horizontally scrollable container if not already wrapped
 function wrapTablesInContainer(html) {
   return html.replace(/<table class="comparison-table">([\s\S]*?)<\/table>/gi, (match) => {
@@ -283,8 +655,13 @@ function wrapTablesInContainer(html) {
 }
 
 // Render colored tags
-function renderTags(tags) {
-  return tags.map(tag => {
+function renderTags(tags, isCompleted) {
+  let html = '';
+  if (isCompleted) {
+    html += `<span class="badge badge-completed" title="Completed">&#10003; Completed</span> `;
+  }
+
+  html += tags.map(tag => {
     const lower = tag.toLowerCase().trim();
     if (lower.startsWith('x')) {
       const freq = parseInt(lower.slice(1)) || 1;
@@ -300,11 +677,24 @@ function renderTags(tags) {
       return `<span class="badge badge-pyq-low">${escapeHtml(tag)}</span>`;
     }
   }).join(' ');
+
+  return html;
 }
 
 // Filter matching logic
 function matchesFilter(q) {
   if (currentFilter === 'all') return true;
+
+  if (currentFilter === 'starred') {
+    return starredQuestions.has(q.id);
+  }
+  if (currentFilter === 'completed') {
+    return completedQuestions.has(q.id);
+  }
+  if (currentFilter === 'uncompleted') {
+    return !completedQuestions.has(q.id);
+  }
+
   const tags = (q.tags || []).map(t => t.toLowerCase());
 
   if (currentFilter === 'high-pyq') {
@@ -329,6 +719,10 @@ window.toggleQuestion = function(cardId) {
   card.classList.toggle('open');
 };
 
+function setupAccordionClicks() {
+  // Accordions are handled directly via onclick for instant response
+}
+
 // Expand all questions in current view
 function expandAllCurrent() {
   document.querySelectorAll('.question-card').forEach(card => {
@@ -345,7 +739,6 @@ function collapseAllCurrent() {
 
 // Setup Event Listeners
 function setupEventListeners() {
-  // Expand / Collapse All
   if (expandAllBtn) expandAllBtn.addEventListener('click', expandAllCurrent);
   if (collapseAllBtn) collapseAllBtn.addEventListener('click', collapseAllCurrent);
 
@@ -367,7 +760,6 @@ function setupEventListeners() {
         if (searchDropdown) searchDropdown.classList.add('active');
       }
     });
-    // Close dropdown on outside click
     document.addEventListener('click', (e) => {
       if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
         if (searchDropdown) searchDropdown.classList.remove('active');
@@ -490,7 +882,6 @@ window.navigateToQuestion = function(modId, qId) {
     switchModule(modId);
   }
 
-  // Allow DOM to render
   setTimeout(() => {
     const safeId = `q-${qId.replace(/\./g, '-')}`;
     const card = document.getElementById(safeId);
