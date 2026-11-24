@@ -18,6 +18,20 @@
   --text-xl: 1.4375rem;   /* 23px */
   --text-2xl: 1.75rem;    /* 28px */
 
+  /* Answer Typography Scale (Desktop / PC Optimized) */
+  --answer-font-size: 1.125rem;       /* 18px on PC mode */
+  --answer-line-height: 1.76;
+  --answer-h3-size: 1.35rem;         /* 21.6px */
+  --answer-h4-size: 1.2rem;          /* 19.2px */
+  --answer-h5-size: 1.08rem;         /* 17.3px */
+  --answer-def-size: 1.125rem;       /* 18px */
+  --answer-formula-size: 1.08rem;    /* 17.3px */
+  --answer-table-size: 1.025rem;     /* 16.4px */
+  --answer-table-td-size: 1rem;      /* 16px */
+  --answer-code-size: 15px;
+  --answer-inline-code-size: 14.5px;
+  --answer-max-width: 82ch;
+
   /* Radii - Technical Minimalist */
   --radius-xs: 2px;
   --radius-sm: 3px;
@@ -76,6 +90,54 @@
   --hl-pink-text: #831843;
   --hl-blue: #BAE6FD;
   --hl-blue-text: #0C4A6E;
+}
+
+/* ==========================================================================
+   User Reading Size Preferences (Scalable on all screens)
+   ========================================================================== */
+[data-reading-size="normal"] {
+  --answer-font-size: 1.03125rem;    /* 16.5px */
+  --answer-line-height: 1.72;
+  --answer-h3-size: 1.25rem;
+  --answer-h4-size: 1.125rem;
+  --answer-h5-size: 1rem;
+  --answer-def-size: 1.03125rem;
+  --answer-formula-size: 1rem;
+  --answer-table-size: 0.95rem;
+  --answer-table-td-size: 0.9375rem;
+  --answer-code-size: 14px;
+  --answer-inline-code-size: 13.5px;
+  --answer-max-width: 78ch;
+}
+
+[data-reading-size="large"] {
+  --answer-font-size: 1.125rem;       /* 18px (Default PC) */
+  --answer-line-height: 1.76;
+  --answer-h3-size: 1.35rem;
+  --answer-h4-size: 1.2rem;
+  --answer-h5-size: 1.08rem;
+  --answer-def-size: 1.125rem;
+  --answer-formula-size: 1.08rem;
+  --answer-table-size: 1.025rem;
+  --answer-table-td-size: 1rem;
+  --answer-code-size: 15px;
+  --answer-inline-code-size: 14.5px;
+  --answer-max-width: 82ch;
+}
+
+[data-reading-size="xlarge"] {
+  --answer-font-size: 1.25rem;        /* 20px (Extra Large) */
+  --answer-line-height: 1.8;
+  --answer-h3-size: 1.5rem;
+  --answer-h4-size: 1.32rem;
+  --answer-h5-size: 1.16rem;
+  --answer-def-size: 1.25rem;
+  --answer-formula-size: 1.1875rem;
+  --answer-table-size: 1.125rem;
+  --answer-table-td-size: 1.08rem;
+  --answer-code-size: 16px;
+  --answer-inline-code-size: 15.5px;
+  --answer-max-width: 88ch;
 }
 
 /* ==========================================================================
@@ -830,10 +892,10 @@ body {
 
 .question-text {
   font-family: var(--font-serif);
-  font-size: var(--text-lg);
-  font-weight: 500;
+  font-size: 1.35rem; /* ~21.6px on desktop for high contrast/readability */
+  font-weight: 600;
   color: var(--text-main);
-  line-height: 1.35;
+  line-height: 1.38;
 }
 
 .question-meta {
@@ -918,9 +980,9 @@ body {
    ========================================================================== */
 .answer-body {
   display: none;
-  padding: 20px 22px 24px;
-  font-size: var(--text-md);
-  line-height: 1.7;
+  padding: 22px 28px 28px;
+  font-size: var(--answer-font-size);
+  line-height: var(--answer-line-height);
   color: var(--text-main);
   background: var(--bg-surface);
 }
@@ -931,12 +993,13 @@ body {
 
 .answer-body h3 {
   font-family: var(--font-serif);
-  font-size: 1.15rem;
+  font-size: var(--answer-h3-size);
   font-weight: 600;
   color: var(--text-main);
-  margin: 18px 0 8px;
-  padding-bottom: 4px;
+  margin: 24px 0 10px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--border-subtle);
+  line-height: 1.4;
 }
 
 .answer-body h3:first-child {
@@ -944,32 +1007,35 @@ body {
 }
 
 .answer-body h4 {
-  font-size: var(--text-base);
+  font-size: var(--answer-h4-size);
   font-weight: 600;
   color: var(--text-main);
-  margin: 12px 0 5px;
+  margin: 18px 0 8px;
+  line-height: 1.45;
 }
 
 .answer-body h5 {
-  font-size: var(--text-sm);
+  font-size: var(--answer-h5-size);
   font-weight: 600;
   color: var(--text-muted);
-  margin: 10px 0 3px;
+  margin: 14px 0 6px;
+  line-height: 1.5;
 }
 
-/* Cap paragraphs and list items at ~70ch for readability */
+/* Cap paragraphs and list items for optimal readable line length */
 .answer-body p {
-  max-width: 70ch;
-  margin-bottom: 10px;
+  max-width: var(--answer-max-width);
+  margin-bottom: 14px;
 }
 
 .answer-body ul, .answer-body ol {
-  max-width: 70ch;
-  margin: 8px 0 14px 22px;
+  max-width: var(--answer-max-width);
+  margin: 10px 0 16px 26px;
 }
 
 .answer-body li {
-  margin-bottom: 5px;
+  margin-bottom: 8px;
+  line-height: var(--answer-line-height);
 }
 
 .answer-body strong {
@@ -982,7 +1048,7 @@ body {
    ========================================================================== */
 .definition-box, .formula-block, .diagram-container, .svg-container {
   max-width: 100%; /* full width */
-  margin: 14px 0 16px;
+  margin: 16px 0 20px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-neutral);
   background: var(--bg-neutral);
@@ -990,8 +1056,16 @@ body {
 }
 
 .definition-box {
-  padding: 12px 16px;
-  font-size: var(--text-base);
+  padding: 16px 20px;
+  font-size: var(--answer-def-size);
+  line-height: 1.7;
+}
+
+.definition-box h3 {
+  font-size: calc(var(--answer-def-size) * 1.15);
+  margin: 0 0 8px 0;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .definition-box strong {
@@ -999,9 +1073,10 @@ body {
 }
 
 .formula-block {
-  padding: 12px 18px;
+  padding: 16px 22px;
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  font-size: var(--answer-formula-size);
+  line-height: 1.7;
   overflow-x: auto;
 }
 
@@ -1009,23 +1084,23 @@ body {
 pre {
   background: var(--bg-code);
   color: var(--text-code);
-  padding: 14px 18px;
+  padding: 16px 20px;
   border-radius: var(--radius-sm);
   overflow-x: auto;
-  margin: 12px 0 16px;
+  margin: 14px 0 18px;
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--answer-code-size);
+  line-height: 1.6;
   border: 1px solid var(--border-subtle);
   max-width: 100%;
 }
 
 code {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--answer-inline-code-size);
   background: var(--bg-hover);
   color: var(--text-main);
-  padding: 1px 5px;
+  padding: 2px 6px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border-subtle);
 }
@@ -1040,7 +1115,7 @@ pre code {
 /* Comparison Tables */
 .table-wrapper {
   overflow-x: auto;
-  margin: 14px 0 18px;
+  margin: 16px 0 22px;
   border: 1px solid var(--border-neutral);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
@@ -1050,24 +1125,27 @@ pre code {
 table.comparison-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-sm);
+  font-size: var(--answer-table-size);
 }
 
 table.comparison-table th {
   background: var(--bg-hover);
   color: var(--text-main);
   font-weight: 600;
+  font-size: var(--answer-table-size);
   text-align: left;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border-neutral);
   text-transform: none; /* Sentence case */
   letter-spacing: normal;
 }
 
 table.comparison-table td {
-  padding: 10px 14px;
+  font-size: var(--answer-table-td-size);
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: top;
+  line-height: 1.6;
 }
 
 table.comparison-table tr:last-child td {
@@ -1098,24 +1176,22 @@ table.comparison-table tr:hover td {
 }
 
 /* Math Typesetting */
-.math-inline {
+.math-inline, .katex {
   display: inline-block;
   padding: 0 2px;
-  font-family: var(--font-serif);
-  font-size: 1em;
+  font-size: 1.02em;
   vertical-align: baseline;
 }
 
-.math-display {
+.math-display, .katex-display {
   display: block;
   text-align: center;
-  padding: 10px 14px;
-  margin: 10px 0;
+  padding: 12px 16px;
+  margin: 14px 0;
   background: var(--bg-neutral);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  font-family: var(--font-serif);
-  font-size: 1.05em;
+  font-size: 1.15em;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -1442,6 +1518,23 @@ mark.highlight-blue {
    Responsive Breakpoints (1280px / 768px / 360px)
    ========================================================================== */
 @media (max-width: 992px) {
+  :root {
+    --answer-font-size: 1.0625rem; /* 17px */
+    --answer-line-height: 1.72;
+    --answer-h3-size: 1.25rem;
+    --answer-h4-size: 1.125rem;
+    --answer-table-size: 0.95rem;
+    --answer-table-td-size: 0.9375rem;
+    --answer-formula-size: 1rem;
+    --answer-code-size: 14px;
+    --answer-max-width: 100%;
+  }
+  .answer-body {
+    padding: 18px 20px 22px;
+  }
+  .question-text {
+    font-size: 1.25rem; /* 20px */
+  }
   .sidebar {
     transform: translateX(-100%);
   }
@@ -1466,6 +1559,27 @@ mark.highlight-blue {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --answer-font-size: 1rem; /* 16px */
+    --answer-line-height: 1.65;
+    --answer-h3-size: 1.1875rem;
+    --answer-h4-size: 1.0625rem;
+    --answer-h5-size: 0.9375rem;
+    --answer-def-size: 1rem;
+    --answer-table-size: 0.875rem; /* 14px */
+    --answer-table-td-size: 0.875rem;
+    --answer-formula-size: 0.9375rem;
+    --answer-code-size: 13px;
+    --answer-inline-code-size: 12.5px;
+    --answer-max-width: 100%;
+  }
+  .answer-body {
+    padding: 14px 14px 18px;
+  }
+  table.comparison-table th,
+  table.comparison-table td {
+    padding: 8px 10px;
+  }
   .top-header {
     height: auto;
     padding: 8px 12px;
@@ -1489,7 +1603,7 @@ mark.highlight-blue {
     padding: 6px 12px;
   }
   .question-text {
-    font-size: 17px;
+    font-size: 1.125rem; /* 18px */
   }
   .question-header-btn {
     padding: 10px 12px;

@@ -90,6 +90,7 @@ const importFileInput = document.getElementById('import-file-input');
 // ==========================================================================
 document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
+  initReadingSize();
   loadSavedUserData();
   setupEventListeners();
   await loadAllModuleData();
@@ -123,6 +124,39 @@ function applyTheme(theme) {
 function toggleTheme() {
   const current = document.documentElement.getAttribute('data-theme') || 'light';
   applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// Reading Text Size Management (Regular 16.5px, Large 18px [default], Extra Large 20px)
+function initReadingSize() {
+  const saved = storage.getItem('es_reading_size') || 'large';
+  applyReadingSize(saved);
+}
+
+function applyReadingSize(size) {
+  document.documentElement.setAttribute('data-reading-size', size);
+  storage.setItem('es_reading_size', size);
+
+  const label = document.getElementById('font-size-label');
+  const btn = document.getElementById('btn-font-size');
+  if (label) {
+    if (size === 'normal') label.textContent = '16px';
+    else if (size === 'large') label.textContent = '18px';
+    else if (size === 'xlarge') label.textContent = '20px';
+  }
+  if (btn) {
+    const desc = size === 'normal' ? 'Regular (16.5px)' : size === 'large' ? 'Large (18px default)' : 'Extra Large (20px)';
+    btn.setAttribute('title', `Text size: ${desc}. Click to cycle size.`);
+  }
+}
+
+function cycleReadingSize() {
+  const current = document.documentElement.getAttribute('data-reading-size') || 'large';
+  let next = 'large';
+  if (current === 'large') next = 'xlarge';
+  else if (current === 'xlarge') next = 'normal';
+  else next = 'large';
+
+  applyReadingSize(next);
 }
 
 // User Data Loading & Persistence
@@ -1622,6 +1656,12 @@ function setupEventListeners() {
   // Theme toggle
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener('click', toggleTheme);
+  }
+
+  // Reading Font Size toggle
+  const fontSizeBtn = document.getElementById('btn-font-size');
+  if (fontSizeBtn) {
+    fontSizeBtn.addEventListener('click', cycleReadingSize);
   }
 
   // Expand / Collapse all
