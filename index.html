@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embedded Systems & RTOS — University Exam Study Guide</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20width=%22100%22%20height=%22100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+<body>
+  <!-- Overlay for Mobile Sidebar -->
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <div class="app-container">
+    <!-- Left Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="subject-badge">University Exam Prep</span>
+        <h1 class="sidebar-title">Embedded Systems &amp; RTOS</h1>
+        <p class="sidebar-subtitle">Complete 8-Mark Study Guide &bull; Modules 1–6</p>
+      </div>
+
+      <!-- Navigation for all six modules -->
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <!-- Rendered dynamically by app.js -->
+      </nav>
+
+      <!-- Sidebar Footer Stats -->
+      <div class="sidebar-footer">
+        <div>
+          <strong id="total-questions-count">62 Questions</strong>
+          <div style="font-size: 10.5px; color: var(--text-muted);">All 6 Modules Covered</div>
+        </div>
+        <div style="text-align: right;">
+          <strong id="high-freq-count" style="color: var(--pastel-rose-dark);">32 High-Yield</strong>
+          <div style="font-size: 10.5px; color: var(--text-muted);">&ge; 3x Past Papers</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-wrapper">
+      <!-- Top Sticky Header -->
+      <header class="top-header">
+        <button class="mobile-menu-btn" id="mobile-menu-btn" title="Toggle Navigation">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+
+        <!-- Search Bar -->
+        <div class="search-box-container">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" class="search-input" id="search-input" placeholder="Search across questions, topics, Musa IDs, formulas..." autocomplete="off">
+          <span class="search-results-count" id="search-count"></span>
+          
+          <!-- Live Search Dropdown -->
+          <div class="search-dropdown" id="search-dropdown"></div>
+        </div>
+
+        <!-- Header Actions -->
+        <div class="header-actions">
+          <button class="btn-pill" id="btn-expand-all" title="Expand All Questions">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 13 12 18 17 13"></polyline><polyline points="7 6 12 11 17 6"></polyline></svg>
+            Expand All
+          </button>
+          <button class="btn-pill" id="btn-collapse-all" title="Collapse All Questions">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 11 12 6 7 11"></polyline><polyline points="17 18 12 13 7 18"></polyline></svg>
+            Collapse All
+          </button>
+        </div>
+      </header>
+
+      <!-- Quick Filter Bar -->
+      <div class="filter-bar">
+        <span class="filter-label">Filter:</span>
+        <button class="filter-chip active" data-filter="all">All Questions (62)</button>
+        <button class="filter-chip" data-filter="high-pyq">High Frequency (&ge; x3)</button>
+        <button class="filter-chip" data-filter="musa">Musa PYQ List</button>
+        <button class="filter-chip" data-filter="syllabus">Syllabus Only</button>
+      </div>
+
+      <!-- Main Dynamic Content Container -->
+      <div class="content-container" id="content-container">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Back to Top Button -->
+  <button class="back-to-top" id="back-to-top" title="Back to Top">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="18 15 12 9 6 15"></polyline>
+    </svg>
+  </button>
+
+  <!-- Pre-bundled Data (Works offline and on file:// without CORS) -->
+  <script src="assets/js/data.js"></script>
+  <!-- Application Logic -->
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
